@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
+import pytest
+
 from manim_video_gen.video.subtitle import (
     _ass_escape,
     _wrap_narration_lines,
     generate_ass_subtitle,
+    generate_chain_ass_subtitle,
 )
 
 
@@ -51,3 +54,21 @@ def test_subtitle_text_preserves_math_notation(tmp_path: Path):
     assert "x²" in text
     assert "6x" in text
     assert "\\" not in text or "\\N" in text or "\\{" in text
+
+
+def test_generate_chain_ass_three_dialogues(tmp_path: Path):
+    out = tmp_path / "chain.ass"
+    generate_chain_ass_subtitle(
+        ["첫 줄", "둘째", "셋째"],
+        [3.5, 2.0, 1.5],
+        out,
+    )
+    text = out.read_text(encoding="utf-8")
+    assert text.count("Dialogue:") == 3
+    assert "0:00:03.50" in text
+    assert "0:00:05.50" in text
+
+
+def test_generate_chain_ass_length_mismatch():
+    with pytest.raises(ValueError, match="length mismatch"):
+        generate_chain_ass_subtitle(["a"], [1.0, 2.0], Path("/tmp/x.ass"))

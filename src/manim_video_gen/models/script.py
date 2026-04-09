@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SceneObjectState(BaseModel):
@@ -76,3 +76,29 @@ class ProcessedSegment(BaseModel):
     manim_code: str | None = None
     video_path: Path | None = None
     merged_segment_path: Path | None = None
+
+
+class SegmentChain(BaseModel):
+    """Rendering unit: one or more consecutive script segments."""
+
+    segments: list[Segment] = Field(default_factory=list)
+    durations: list[float] = Field(default_factory=list)
+    tts_results: list[TTSResult] = Field(default_factory=list)
+    is_equation_chain: bool = False
+
+    @model_validator(mode="after")
+    def _lengths_match(self) -> SegmentChain:
+        n = len(self.segments)
+        if len(self.durations) != n or len(self.tts_results) != n:
+            raise ValueError(
+                "segments, durations, and tts_results must have the same length"
+            )
+        return self
+
+    @property
+    def total_duration(self) -> float:
+        return float(sum(self.durations))
+
+    @property
+    def segment_ids(self) -> list[int]:
+        return [s.id for s in self.segments]

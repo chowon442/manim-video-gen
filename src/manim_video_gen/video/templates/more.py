@@ -39,10 +39,9 @@ class EquationStepsTemplate:
         arrange_mob = "DOWN" if direction == "DOWN" else "RIGHT"
         buff = 0.45 if arrange_mob == "DOWN" else 0.35
 
-        fade_out = _FADE_OUT_SECONDS
         n = len(steps)
-        t_each = max(0.25, (duration - fade_out) / max(n + 1, 2))
-        t_wait = max(0.12, duration - t_each * n - fade_out)
+        t_each = max(0.25, duration / max(n + 1, 2))
+        t_wait = max(0.12, duration - t_each * n)
         t_wait = min(t_wait, t_each)
 
         tex_lines = ",\n            ".join(f"MathTex({repr(s)})" for s in steps)
@@ -63,7 +62,6 @@ class Segment(Scene):
         for i, mob in enumerate(group):
             self.play(Write(mob), run_time={t_each:.3f})
         self.wait({t_wait:.3f})
-        self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 '''
 
 
@@ -140,10 +138,9 @@ class HighlightResultTemplate:
         imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
         prev_lines = _prev_state_lines(prev_scene_state)
 
-        fade_out = _FADE_OUT_SECONDS
         t_in = max(0.35, duration * 0.30)
         t_hold = max(0.2, duration * 0.40)
-        t_out = max(0.1, duration - t_in - t_hold - fade_out)
+        t_out = max(0.1, duration - t_in - t_hold)
 
         return f'''{imports}
 
@@ -155,7 +152,6 @@ class Segment(Scene):
         self.play(Create(box), run_time={t_in * 0.6:.3f})
         self.wait({t_hold:.3f})
         self.play(FadeOut(box), run_time={min(t_out, 0.4):.3f})
-        self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 '''
 
 

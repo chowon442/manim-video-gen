@@ -3,6 +3,7 @@ from manim_video_gen.models.script import (
     ProcessedSegment,
     SceneObjectState,
     Segment,
+    SegmentChain,
     TTSResult,
     VideoScript,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "ProcessedSegment",
     "SceneObjectState",
     "Segment",
+    "SegmentChain",
     "SolutionPlan",
     "SolutionStep",
     "TTSResult",

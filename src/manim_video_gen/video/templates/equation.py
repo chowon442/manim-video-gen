@@ -73,9 +73,8 @@ class EquationWriteTemplate:
         font_size = int(params.get("font_size", 48))
         color = str(params.get("color", "WHITE"))
 
-        fade_out = _FADE_OUT_SECONDS
-        t_write = max(0.4, min(duration * 0.60, duration - fade_out - 0.15))
-        t_wait = max(0.15, duration - t_write - fade_out)
+        t_write = max(0.4, min(duration * 0.65, duration - 0.15))
+        t_wait = max(0.15, duration - t_write)
 
         all_latex = _collect_latex_values(params, prev_scene_state)
         imports = scene_imports(*all_latex)
@@ -88,7 +87,6 @@ class Segment(Scene):
 {prev_lines}        eq = MathTex({repr(latex)}, font_size={font_size}).set_color({color})
         self.play(Write(eq), run_time={t_write:.3f})
         self.wait({t_wait:.3f})
-        self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 '''
 
 
@@ -108,15 +106,13 @@ class EquationTransformTemplate:
         all_latex = _collect_latex_values(params, prev_scene_state)
         imports = scene_imports(*all_latex)
         prev_lines = _prev_state_lines(prev_scene_state)
-        fade_out = _FADE_OUT_SECONDS
 
         if prev_scene_state:
-            t_tx = max(0.5, duration * 0.60)
-            t_end = max(0.15, duration - t_tx - fade_out)
+            t_tx = max(0.5, duration * 0.65)
+            t_end = max(0.15, duration - t_tx)
             core = f'''{prev_lines}        eq2 = MathTex({repr(to_latex)})
         self.play(TransformMatchingTex(_p0, eq2), run_time={t_tx:.3f})
         self.wait({t_end:.3f})
-        self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 '''
             return f'''{imports}
 
@@ -127,7 +123,7 @@ class Segment(Scene):
         t_intro = max(0.25, duration * 0.22)
         t_mid = max(0.2, duration * 0.12)
         t_tx = max(0.35, duration * 0.40)
-        t_end = max(0.15, duration - (t_intro + t_mid + t_tx + fade_out))
+        t_end = max(0.15, duration - (t_intro + t_mid + t_tx))
 
         return f'''{imports}
 
@@ -139,5 +135,4 @@ class Segment(Scene):
         self.wait({t_mid:.3f})
         self.play(TransformMatchingTex(eq1, eq2), run_time={t_tx:.3f})
         self.wait({t_end:.3f})
-        self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 '''

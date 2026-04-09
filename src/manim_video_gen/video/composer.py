@@ -156,6 +156,50 @@ class VideoComposer:
         self._run(cmd)
         return output_path
 
+    def concat_audio(self, audio_paths: list[Path], output_path: Path) -> Path:
+        """Concatenate audio files (WAV/MP3/etc.) into one track via FFmpeg concat demuxer."""
+        if not audio_paths:
+            raise ValueError("No audio files to concatenate")
+        output_path = Path(output_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        paths = [Path(p).resolve() for p in audio_paths]
+        for p in paths:
+            if not p.is_file():
+                raise FileNotFoundError(f"Audio file not found: {p}")
+
+        if len(paths) == 1:
+            import shutil
+
+            shutil.copy2(paths[0], output_path)
+            return output_path
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as handle:
+            for p in paths:
+                handle.write(f"file '{p.as_posix()}'\n")
+            list_path = Path(handle.name)
+        try:
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                str(output_path),
+            ]
+            self._run(cmd)
+        finally:
+            list_path.unlink(missing_ok=True)
+        return output_path
+
     def compose_final(self, merged_paths: list[Path], output_path: Path) -> Path:
         """세그먼트별 병합 파일들을 받아 crossfade를 적용하며 최종 영상을 생성한다."""
         return self.concat_segments(merged_paths, output_path)

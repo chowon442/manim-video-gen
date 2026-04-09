@@ -14,6 +14,8 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 
 선택 기능: 하단 자막(`MANIM_VIDEO_GEN_BURN_SUBTITLES`), 배경음(`MANIM_VIDEO_GEN_BGM_PATH`), 출력 해상도/FPS(`MANIM_VIDEO_GEN_VIDEO_*`), 진행 콜백(`generate_video(..., on_progress=...)`), Docker(`Dockerfile`).
 
+연속 수식 세그먼트(`prev_scene_state`로 이어지는 `equation_*` / `highlight_result`)는 **하나의 Manim Scene으로 병합**되어 `TransformMatchingTex` 등으로 자연스럽게 전환됩니다. 렌더 실패 시 자동으로 세그먼트별 렌더로 폴백합니다.
+
 ## 설치
 
 ```bash

@@ -95,3 +95,36 @@ def generate_ass_subtitle(
 
     output_path.write_text(_ASS_HEADER + dialogue, encoding="utf-8")
     return output_path
+
+
+def generate_chain_ass_subtitle(
+    narrations: list[str],
+    durations: list[float],
+    output_path: Path,
+    *,
+    style_name: str = "Default",
+) -> Path:
+    """
+    Write an ASS file with one Dialogue per segment, timed with cumulative offsets.
+
+    narrations[i] displays during [sum(durations[:i]), sum(durations[:i+1])).
+    """
+    if len(narrations) != len(durations):
+        raise ValueError("narrations and durations length mismatch")
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    offset = 0.0
+    lines: list[str] = []
+    for narration, dur in zip(narrations, durations, strict=True):
+        start = _format_ass_time(offset)
+        end = _format_ass_time(offset + float(dur))
+        escaped = _ass_escape(narration)
+        text = _wrap_narration_lines(escaped)
+        lines.append(
+            f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{text}\n"
+        )
+        offset += float(dur)
+
+    output_path.write_text(_ASS_HEADER + "".join(lines), encoding="utf-8")
+    return output_path

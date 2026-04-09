@@ -9,7 +9,10 @@ from manim_video_gen.video.duration_adjuster import (
     estimate_construct_duration_seconds,
 )
 from manim_video_gen.video.manim_renderer import render_manim_scene
-from manim_video_gen.video.subtitle import generate_ass_subtitle
+from manim_video_gen.video.subtitle import (
+    generate_ass_subtitle,
+    generate_chain_ass_subtitle,
+)
 
 __all__ = [
     "VideoComposer",
@@ -17,6 +20,7 @@ __all__ = [
     "adjust_duration_safe",
     "estimate_construct_duration_seconds",
     "generate_ass_subtitle",
+    "generate_chain_ass_subtitle",
     "render_manim_scene",
     "validate_and_test_render",
     "validate_python_syntax",

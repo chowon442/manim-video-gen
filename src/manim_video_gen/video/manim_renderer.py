@@ -12,7 +12,7 @@ from manim_video_gen.exceptions import RenderError
 logger = logging.getLogger(__name__)
 
 
-def _find_rendered_segment_mp4(*, media_dir: Path, module_stem: str) -> Path:
+def _find_rendered_scene_mp4(*, media_dir: Path, module_stem: str, scene_name: str) -> Path:
     base = media_dir / "videos" / module_stem
     if not base.exists():
         raise RenderError(
@@ -20,10 +20,10 @@ def _find_rendered_segment_mp4(*, media_dir: Path, module_stem: str) -> Path:
             stage="render",
         )
 
-    matches = list(base.rglob("Segment.mp4"))
+    matches = list(base.rglob(f"{scene_name}.mp4"))
     if not matches:
         raise RenderError(
-            f"Could not find rendered Segment.mp4 under {base}",
+            f"Could not find rendered {scene_name}.mp4 under {base}",
             stage="render",
         )
 
@@ -37,6 +37,7 @@ def render_manim_scene(
     scene_path: Path,
     workspace_media_dir: Path,
     settings: Settings,
+    scene_name: str = "Segment",
 ) -> Path:
     """Write code to scene_path, render into workspace_media_dir, return mp4 path."""
     scene_path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +49,7 @@ def render_manim_scene(
         "render",
         f"-q{settings.manim_quality_high}",
         str(scene_path),
-        "Segment",
+        scene_name,
         "--media_dir",
         str(workspace_media_dir),
     ]
@@ -90,8 +91,10 @@ def render_manim_scene(
             detail=tail,
         )
 
-    out = _find_rendered_segment_mp4(
-        media_dir=workspace_media_dir, module_stem=scene_path.stem
+    out = _find_rendered_scene_mp4(
+        media_dir=workspace_media_dir,
+        module_stem=scene_path.stem,
+        scene_name=scene_name,
     )
     logger.info("Rendered Manim video: %s", out)
     return out

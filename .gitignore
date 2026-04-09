@@ -1,0 +1,46 @@
+# Secrets / Environment
+.env
+.env.local
+.env.*.local
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python packaging
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+sdist/
+
+# Testing / Linting cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Manim generated media
+media/
+
+# Pipeline artifacts (video, audio, etc.)
+artifacts/
+
+# macOS
+.DS_Store
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# Logs
+*.log

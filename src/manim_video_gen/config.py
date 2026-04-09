@@ -1,0 +1,91 @@
+"""Application settings loaded from environment variables."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# CWD와 무관하게 저장소 루트의 .env를 읽음 (예: scripts/에서 스크립트 실행 시에도 Voice ID 적용)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_DOTENV = _REPO_ROOT / ".env"
+_ENV_FILE = str(_REPO_DOTENV) if _REPO_DOTENV.is_file() else ".env"
+
+
+class Settings(BaseSettings):
+    """Runtime configuration for manim-video-gen."""
+
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    openrouter_api_key: str = Field(
+        default="",
+        validation_alias="OPENROUTER_API_KEY",
+    )
+    elevenlabs_api_key: str = Field(
+        default="",
+        validation_alias="ELEVENLABS_API_KEY",
+    )
+    elevenlabs_voice_id: str | None = Field(
+        default=None,
+        validation_alias="ELEVENLABS_VOICE_ID",
+    )
+    # If true: try /with-timestamps first, then fall back to standard TTS on 402/403 etc.
+    # If false: only standard /text-to-speech (no word timestamps; duration still via ffprobe).
+    elevenlabs_try_timestamps: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_ELEVENLABS_TRY_TIMESTAMPS",
+    )
+
+    model_solve: str = Field(
+        default="openai/gpt-4o",
+        validation_alias="MANIM_VIDEO_GEN_MODEL_SOLVE",
+    )
+    model_script: str = Field(
+        default="openai/gpt-4o",
+        validation_alias="MANIM_VIDEO_GEN_MODEL_SCRIPT",
+    )
+    model_manim: str = Field(
+        default="openai/gpt-4o",
+        validation_alias="MANIM_VIDEO_GEN_MODEL_MANIM",
+    )
+
+    manim_quality_low: Literal["l", "m", "h", "p", "k"] = Field(
+        default="l",
+        validation_alias="MANIM_VIDEO_GEN_MANIM_QUALITY_LOW",
+    )
+    manim_quality_high: Literal["l", "m", "h", "p", "k"] = Field(
+        default="h",
+        validation_alias="MANIM_VIDEO_GEN_MANIM_QUALITY_HIGH",
+    )
+
+    crossfade_duration: float = Field(
+        default=0.25,
+        validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
+    )
+
+    llm_timeout_seconds: float = 120.0
+    tts_timeout_seconds: float = 120.0
+    manim_render_timeout_seconds: float = 600.0
+
+    def require_openrouter(self) -> None:
+        if not self.openrouter_api_key.strip():
+            raise ValueError("OPENROUTER_API_KEY is not set")
+
+    def require_elevenlabs(self) -> None:
+        if not self.elevenlabs_api_key.strip():
+            raise ValueError("ELEVENLABS_API_KEY is not set")
+
+
+def get_settings() -> Settings:
+    return Settings()
+
+
+def project_root() -> Path:
+    """Repository root (parent of src/)."""
+    return Path(__file__).resolve().parents[2]

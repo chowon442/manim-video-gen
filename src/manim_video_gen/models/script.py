@@ -22,7 +22,14 @@ class Segment(BaseModel):
     """One narrated segment with visual instructions."""
 
     id: int = Field(..., ge=0)
-    narration: str = Field(..., description="Korean TTS text only, no raw LaTeX")
+    narration: str = Field(
+        ...,
+        description="Readable Korean for subtitles; may include light math notation like x², 6x",
+    )
+    tts_text: str = Field(
+        default="",
+        description="Fully phonetic Korean for TTS engine (e.g. '엑스 제곱 더하기 육엑스')",
+    )
     visual_description: str = Field(
         ...,
         description="What should appear on screen",
@@ -36,6 +43,11 @@ class Segment(BaseModel):
         default=None,
         description="Objects that should already be on screen at segment start",
     )
+
+    @property
+    def effective_tts_text(self) -> str:
+        """Return tts_text if available, otherwise fall back to narration."""
+        return self.tts_text.strip() if self.tts_text and self.tts_text.strip() else self.narration
 
 
 class VideoScript(BaseModel):

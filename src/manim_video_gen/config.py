@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        protected_namespaces=("settings_",),
     )
 
     openrouter_api_key: str = Field(
@@ -65,8 +66,53 @@ class Settings(BaseSettings):
     )
 
     crossfade_duration: float = Field(
-        default=0.25,
+        default=0.4,
         validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
+    )
+
+    tts_provider: Literal["elevenlabs", "azure"] = Field(
+        default="elevenlabs",
+        validation_alias="MANIM_VIDEO_GEN_TTS_PROVIDER",
+    )
+    azure_speech_key: str = Field(
+        default="",
+        validation_alias="AZURE_SPEECH_KEY",
+    )
+    azure_speech_region: str = Field(
+        default="",
+        validation_alias="AZURE_SPEECH_REGION",
+    )
+    azure_tts_voice: str = Field(
+        default="ko-KR-SunHiNeural",
+        validation_alias="MANIM_VIDEO_GEN_AZURE_TTS_VOICE",
+    )
+
+    burn_subtitles: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_BURN_SUBTITLES",
+    )
+
+    video_width: int = Field(
+        default=0,
+        validation_alias="MANIM_VIDEO_GEN_VIDEO_WIDTH",
+        description="0 = Manim default",
+    )
+    video_height: int = Field(
+        default=0,
+        validation_alias="MANIM_VIDEO_GEN_VIDEO_HEIGHT",
+    )
+    video_fps: int = Field(
+        default=0,
+        validation_alias="MANIM_VIDEO_GEN_VIDEO_FPS",
+    )
+
+    bgm_path: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_BGM_PATH",
+    )
+    bgm_volume: float = Field(
+        default=0.2,
+        validation_alias="MANIM_VIDEO_GEN_BGM_VOLUME",
     )
 
     llm_timeout_seconds: float = 120.0

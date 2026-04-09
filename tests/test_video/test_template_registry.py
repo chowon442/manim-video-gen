@@ -10,6 +10,7 @@ def _make_segment(**kwargs) -> Segment:
     defaults = {
         "id": 0,
         "narration": "테스트 나레이션",
+        "tts_text": "테스트 나레이션",
         "visual_description": "수식을 보여줌",
         "visual_type": "equation_write",
         "visual_params": {},
@@ -85,9 +86,17 @@ class TestRenderCodeForSegment:
 
     def test_unknown_type_raises(self):
         registry = TemplateRegistry()
-        seg = _make_segment(visual_type="graph_plot")
+        seg = _make_segment(visual_type="unsupported_custom_viz_xyz")
         with pytest.raises(KeyError, match="Unsupported visual_type"):
             registry.render_code_for_segment(seg, duration=3.0)
+
+    def test_has_graph_plot(self):
+        registry = TemplateRegistry()
+        assert registry.has("graph_plot") is True
+
+    def test_has_equation_steps(self):
+        registry = TemplateRegistry()
+        assert registry.has("equation_steps") is True
 
     def test_params_passed_correctly(self):
         registry = TemplateRegistry()

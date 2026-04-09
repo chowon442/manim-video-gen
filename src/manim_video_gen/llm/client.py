@@ -8,9 +8,10 @@ import re
 from typing import Any, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from manim_video_gen.config import Settings
+from manim_video_gen.exceptions import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,11 @@ class OpenRouterClient:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 logger.error("OpenRouter error: %s", response.text[:800])
-                raise exc
+                raise LLMError(
+                    f"OpenRouter HTTP {response.status_code}",
+                    stage="llm",
+                    detail=response.text[:800],
+                ) from exc
             data = response.json()
         else:
             timeout = httpx.Timeout(self._settings.llm_timeout_seconds)
@@ -109,13 +114,20 @@ class OpenRouterClient:
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:
                     logger.error("OpenRouter error: %s", response.text[:800])
-                    raise exc
+                    raise LLMError(
+                        f"OpenRouter HTTP {response.status_code}",
+                        stage="llm",
+                        detail=response.text[:800],
+                    ) from exc
                 data = response.json()
 
         try:
             return str(data["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"Unexpected OpenRouter response: {data!r}") from exc
+            raise LLMError(
+                f"Unexpected OpenRouter response: {data!r}",
+                stage="llm",
+            ) from exc
 
     async def complete_json_model(
         self,
@@ -129,4 +141,11 @@ class OpenRouterClient:
             model=model, messages=messages, temperature=temperature
         )
         parsed = extract_json_from_text(raw)
-        return response_model.model_validate(parsed)
+        try:
+            return response_model.model_validate(parsed)
+        except ValidationError as exc:
+            raise LLMError(
+                "LLM JSON did not match schema",
+                stage="llm",
+                detail=str(exc),
+            ) from exc

@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from manim_video_gen.config import Settings
+from manim_video_gen.video.error_extract import refine_manim_render_error
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def run_manim_render(
     quality: str,
     timeout_seconds: float,
     media_dir: Path | None = None,
+    settings: Settings | None = None,
 ) -> tuple[bool, str]:
     scene_path.parent.mkdir(parents=True, exist_ok=True)
     scene_path.write_text(code, encoding="utf-8")
@@ -130,6 +132,14 @@ def run_manim_render(
     if media_dir is not None:
         media_dir.mkdir(parents=True, exist_ok=True)
         cmd.extend(["--media_dir", str(media_dir)])
+
+    if settings is not None:
+        if settings.video_width > 0 and settings.video_height > 0:
+            cmd.extend(
+                ["--resolution", f"{settings.video_width},{settings.video_height}"]
+            )
+        if settings.video_fps > 0:
+            cmd.extend(["--frame_rate", str(settings.video_fps)])
     try:
         completed = subprocess.run(
             cmd,
@@ -144,8 +154,8 @@ def run_manim_render(
         return False, f"manim render timed out after {timeout_seconds}s"
 
     if completed.returncode != 0:
-        tail = (completed.stderr or completed.stdout or "")[-4000:]
-        return False, tail
+        raw = (completed.stderr or completed.stdout or "")
+        return False, refine_manim_render_error(raw)
 
     return True, ""
 
@@ -169,8 +179,11 @@ def validate_and_test_render(
         quality=settings.manim_quality_low,
         timeout_seconds=settings.manim_render_timeout_seconds,
         media_dir=media_dir,
+        settings=settings,
     )
-    return ok2, err2
+    if ok2:
+        return True, ""
+    return False, err2
 
 
 def render_smoke_test(code: str, settings: Settings) -> tuple[bool, str]:

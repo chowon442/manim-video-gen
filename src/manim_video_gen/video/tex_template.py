@@ -6,9 +6,23 @@ TeX 템플릿 설정 코드를 생성된 씬 파일에 주입한다.
 
 from __future__ import annotations
 
+import os
+import platform
 import re
 
-CJK_FONT_DEFAULT = "AppleGothic"
+def _default_cjk_font() -> str:
+    """OS별 기본 CJK 폰트를 반환한다. 환경변수로 오버라이드 가능."""
+    if env_font := os.environ.get("MANIM_VIDEO_GEN_CJK_FONT", "").strip():
+        return env_font
+    system = platform.system()
+    if system == "Windows":
+        return "Malgun Gothic"   # 맑은 고딕 - Windows 기본 한글 폰트
+    if system == "Darwin":
+        return "AppleGothic"     # macOS 기본 한글 폰트
+    return "Noto Sans CJK KR"   # Linux (Noto CJK 설치 필요)
+
+
+CJK_FONT_DEFAULT: str = _default_cjk_font()
 
 _NON_ASCII_RE = re.compile(r"[^\x00-\x7f]")
 

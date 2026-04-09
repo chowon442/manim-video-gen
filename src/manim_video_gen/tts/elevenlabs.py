@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from manim_video_gen.config import Settings
+from manim_video_gen.exceptions import TTSError
 from manim_video_gen.models.script import TTSResult
 from manim_video_gen.tts.base import TTSProvider
 
@@ -49,30 +50,39 @@ def _is_library_voice_free_tier_block(status_code: int, body: str) -> bool:
     return False
 
 
-def _runtime_error_for_elevenlabs(response: httpx.Response) -> RuntimeError:
+def _runtime_error_for_elevenlabs(response: httpx.Response) -> TTSError:
     sc = response.status_code
     body = response.text or ""
     err_code, api_msg = _parse_elevenlabs_detail(body[:4000])
     if sc == 401:
-        return RuntimeError(
-            "ElevenLabs 401: ELEVENLABS_API_KEY가 잘못되었거나 만료되었습니다."
+        return TTSError(
+            "ElevenLabs 401: ELEVENLABS_API_KEY가 잘못되었거나 만료되었습니다.",
+            stage="tts",
         )
     if sc == 402:
         if err_code == "paid_plan_required" or (
             api_msg and "library voices" in api_msg.lower()
         ):
-            return RuntimeError(
+            return TTSError(
                 "ElevenLabs 402 (paid_plan_required): 무료 계정은 API로 '라이브러리 보이스' "
                 "(기본·프리셋 음성)를 쓸 수 없습니다. 남은 문자 크레딧과 별개의 플랜 제한입니다. "
                 "해결: 대시보드 Voice Lab에서 만든 본인 보이스의 Voice ID를 ELEVENLABS_VOICE_ID에 넣거나, "
                 "유료 구독으로 업그레이드하세요. "
-                f"[API: {api_msg or err_code}]"
+                f"[API: {api_msg or err_code}]",
+                stage="tts",
+                detail=api_msg or err_code,
             )
-        return RuntimeError(
+        return TTSError(
             "ElevenLabs 402: 결제·크레딧 또는 플랜 제한입니다. "
-            f"https://elevenlabs.io 에서 확인하세요. 상세: {api_msg or body[:400]}"
+            f"https://elevenlabs.io 에서 확인하세요. 상세: {api_msg or body[:400]}",
+            stage="tts",
+            detail=api_msg or body[:400],
         )
-    return RuntimeError(f"ElevenLabs HTTP {sc}: {api_msg or body[:500]}")
+    return TTSError(
+        f"ElevenLabs HTTP {sc}: {api_msg or body[:500]}",
+        stage="tts",
+        detail=api_msg or body[:500],
+    )
 
 
 def _default_voice_id() -> str:
@@ -84,6 +94,7 @@ def _default_voice_id() -> str:
 
 class ElevenLabsTTS(TTSProvider):
     def __init__(self, settings: Settings) -> None:
+        settings.require_elevenlabs()
         self._settings = settings
         self._api_key = settings.elevenlabs_api_key
         self._voice_id = settings.elevenlabs_voice_id or _default_voice_id()
@@ -100,7 +111,7 @@ class ElevenLabsTTS(TTSProvider):
 
     async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
         if not text.strip():
-            raise ValueError("TTS text is empty")
+            raise TTSError("TTS text is empty", stage="tts")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         timeout = httpx.Timeout(self._settings.tts_timeout_seconds)
@@ -118,7 +129,7 @@ class ElevenLabsTTS(TTSProvider):
                 mp3_bytes = await self._synthesize_standard(client, payload)
 
         if mp3_bytes is None or not mp3_bytes:
-            raise RuntimeError("ElevenLabs returned empty audio")
+            raise TTSError("ElevenLabs returned empty audio", stage="tts")
 
         mp3_path = output_path.with_suffix(".mp3")
         mp3_path.write_bytes(mp3_bytes)
@@ -166,7 +177,7 @@ class ElevenLabsTTS(TTSProvider):
             data = response.json()
             audio_b64 = data.get("audio_base64")
             if not audio_b64:
-                raise RuntimeError("ElevenLabs response missing audio_base64")
+                raise TTSError("ElevenLabs response missing audio_base64", stage="tts")
             mp3 = base64.b64decode(audio_b64)
             words = _alignment_to_words(data.get("alignment") or {})
             return mp3, words
@@ -216,11 +227,17 @@ def _ffmpeg_convert_to_wav(src: Path, dst: Path) -> None:
             timeout=120,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError(
-            "ffmpeg is required to convert ElevenLabs audio to WAV."
+        raise TTSError(
+            "ffmpeg is required to convert ElevenLabs audio to WAV.",
+            stage="tts",
+            detail=str(exc),
         ) from exc
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"ffmpeg failed: {exc.stderr[:500]}") from exc
+        raise TTSError(
+            f"ffmpeg failed: {exc.stderr[:500]}",
+            stage="tts",
+            detail=(exc.stderr or "")[:500],
+        ) from exc
 
 
 def _ffprobe_duration_seconds(path: Path) -> float:

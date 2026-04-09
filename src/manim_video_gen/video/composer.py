@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from manim_video_gen.exceptions import CompositionError
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,8 +44,48 @@ class VideoComposer:
         video_path: Path,
         audio_path: Path,
         output_path: Path,
+        subtitle_path: Path | None = None,
     ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path = Path(video_path).resolve()
+        audio_path = Path(audio_path).resolve()
+        output_path = Path(output_path).resolve()
+
+        if subtitle_path is not None:
+            sp = Path(subtitle_path).resolve()
+            if not sp.is_file():
+                raise FileNotFoundError(f"Subtitle file not found: {sp}")
+            # Use basename + cwd so Windows paths with spaces/colons work in -vf ass=
+            vf = f"ass={sp.name}"
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-i",
+                str(audio_path),
+                "-vf",
+                vf,
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(output_path),
+            ]
+            self._run(cmd, cwd=str(sp.parent))
+            return output_path
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -55,6 +97,55 @@ class VideoComposer:
             "0:v:0",
             "-map",
             "1:a:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(output_path),
+        ]
+        self._run(cmd)
+        return output_path
+
+    def mix_background_music(
+        self,
+        *,
+        video_path: Path,
+        bgm_path: Path,
+        output_path: Path,
+        bgm_volume: float = 0.2,
+    ) -> Path:
+        """Mix a BGM track under existing video audio (short BGM loops)."""
+        video_path = Path(video_path).resolve()
+        bgm_path = Path(bgm_path).resolve()
+        output_path = Path(output_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if not bgm_path.is_file():
+            raise FileNotFoundError(f"BGM file not found: {bgm_path}")
+        vol = max(0.01, min(float(bgm_volume), 1.0))
+        filter_complex = (
+            f"[1:a]volume={vol:.3f},aloop=loop=-1:size=2e+09[bm];"
+            "[0:a][bm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        )
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(bgm_path),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "0:v:0",
+            "-map",
+            "[aout]",
             "-c:v",
             "copy",
             "-c:a",
@@ -80,8 +171,16 @@ class VideoComposer:
                 "-y",
                 "-i",
                 str(segment_paths[0]),
-                "-c",
-                "copy",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
                 str(output_path),
             ]
             self._run(cmd)
@@ -110,8 +209,16 @@ class VideoComposer:
                 "0",
                 "-i",
                 str(list_path),
-                "-c",
-                "copy",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
                 str(output_path),
             ]
             self._run(cmd)
@@ -180,6 +287,8 @@ class VideoComposer:
             "veryfast",
             "-crf",
             "20",
+            "-pix_fmt",
+            "yuv420p",
             "-c:a",
             "aac",
             str(output_path),
@@ -188,7 +297,7 @@ class VideoComposer:
         return output_path
 
     @staticmethod
-    def _run(cmd: list[str]) -> None:
+    def _run(cmd: list[str], *, cwd: str | None = None) -> None:
         try:
             completed = subprocess.run(
                 cmd,
@@ -196,10 +305,19 @@ class VideoComposer:
                 capture_output=True,
                 text=True,
                 timeout=3600,
+                cwd=cwd,
             )
         except FileNotFoundError as exc:
-            raise RuntimeError("ffmpeg not found on PATH") from exc
+            raise CompositionError(
+                "ffmpeg not found on PATH",
+                stage="compose",
+                detail=str(exc),
+            ) from exc
         except subprocess.CalledProcessError as exc:
             tail = (exc.stderr or exc.stdout or "")[-8000:]
             logger.error("ffmpeg failed: %s", tail)
-            raise RuntimeError(f"ffmpeg failed: {tail}") from exc
+            raise CompositionError(
+                "ffmpeg failed",
+                stage="compose",
+                detail=tail,
+            ) from exc

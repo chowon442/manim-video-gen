@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from manim_video_gen.config import Settings
+from manim_video_gen.exceptions import RenderError
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,17 @@ logger = logging.getLogger(__name__)
 def _find_rendered_segment_mp4(*, media_dir: Path, module_stem: str) -> Path:
     base = media_dir / "videos" / module_stem
     if not base.exists():
-        raise RuntimeError(f"Expected Manim output under {base}, but it does not exist")
+        raise RenderError(
+            f"Expected Manim output under {base}, but it does not exist",
+            stage="render",
+        )
 
     matches = list(base.rglob("Segment.mp4"))
     if not matches:
-        raise RuntimeError(f"Could not find rendered Segment.mp4 under {base}")
+        raise RenderError(
+            f"Could not find rendered Segment.mp4 under {base}",
+            stage="render",
+        )
 
     matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return matches[0]
@@ -45,6 +52,15 @@ def render_manim_scene(
         "--media_dir",
         str(workspace_media_dir),
     ]
+    if settings.video_width > 0 and settings.video_height > 0:
+        cmd.extend(
+            [
+                "--resolution",
+                f"{settings.video_width},{settings.video_height}",
+            ]
+        )
+    if settings.video_fps > 0:
+        cmd.extend(["--frame_rate", str(settings.video_fps)])
     try:
         completed = subprocess.run(
             cmd,
@@ -54,13 +70,24 @@ def render_manim_scene(
             timeout=settings.manim_render_timeout_seconds,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError("manim CLI not found on PATH") from exc
+        raise RenderError(
+            "manim CLI not found on PATH",
+            stage="render",
+            detail=str(exc),
+        ) from exc
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("manim render timed out") from exc
+        raise RenderError(
+            "manim render timed out",
+            stage="render",
+            detail=str(exc),
+        ) from exc
 
     if completed.returncode != 0:
-        raise RuntimeError(
-            "manim render failed:\n" + (completed.stderr or completed.stdout)[-8000:]
+        tail = (completed.stderr or completed.stdout)[-8000:]
+        raise RenderError(
+            "manim render failed",
+            stage="render",
+            detail=tail,
         )
 
     out = _find_rendered_segment_mp4(

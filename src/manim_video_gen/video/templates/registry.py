@@ -10,9 +10,11 @@ from manim_video_gen.video.templates.equation import (
     EquationWriteTemplate,
 )
 from manim_video_gen.video.templates.more import (
+    AnnotatedEquationTemplate,
     EquationDerivationTemplate,
     EquationStepsTemplate,
     GraphPlotTemplate,
+    NumberLinePlotTemplate,
     HighlightResultTemplate,
     IntroProblemTemplate,
     OutroSummaryTemplate,
@@ -60,6 +62,22 @@ def _render_graph(segment: Segment, duration: float) -> str:
     )
 
 
+def _render_number_line(segment: Segment, duration: float) -> str:
+    return NumberLinePlotTemplate.render_code(
+        params=segment.visual_params,
+        duration=duration,
+        prev_scene_state=segment.prev_scene_state,
+    )
+
+
+def _render_annotated_equation(segment: Segment, duration: float) -> str:
+    return AnnotatedEquationTemplate.render_code(
+        params=segment.visual_params,
+        duration=duration,
+        prev_scene_state=segment.prev_scene_state,
+    )
+
+
 def _render_highlight(segment: Segment, duration: float) -> str:
     return HighlightResultTemplate.render_code(
         params=segment.visual_params,
@@ -98,6 +116,8 @@ _TEMPLATE_RENDERERS: dict[str, Callable[[Segment, float], str]] = {
     EquationStepsTemplate.visual_type: _render_steps,
     EquationDerivationTemplate.visual_type: _render_equation_derivation,
     GraphPlotTemplate.visual_type: _render_graph,
+    NumberLinePlotTemplate.visual_type: _render_number_line,
+    AnnotatedEquationTemplate.visual_type: _render_annotated_equation,
     HighlightResultTemplate.visual_type: _render_highlight,
     TitleCardTemplate.visual_type: _render_title,
     IntroProblemTemplate.visual_type: _render_intro,

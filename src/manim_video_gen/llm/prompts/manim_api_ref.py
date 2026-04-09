@@ -31,6 +31,7 @@ You MUST use Manim **Community Edition** (from manim import *). Do NOT use 3b1b 
 - DoubleArrow(start, end, color=WHITE)
 - Vector(direction, color=YELLOW)            # Arrow from ORIGIN
 - Brace(mobject, direction=DOWN, color=WHITE)
+- brace.get_tex(r"\\theta")                    # label from tex (ASCII)
 - SurroundingRectangle(mobject, color=YELLOW, buff=0.1)
 - Underline(mobject, color=YELLOW)
 - Cross(mobject, stroke_color=RED)
@@ -44,6 +45,9 @@ You MUST use Manim **Community Edition** (from manim import *). Do NOT use 3b1b 
 ## Graphs / plots
 - Axes(x_range=[a, b, step], y_range=[c, d, step], x_length=6, y_length=4)
 - axes.plot(lambda x: x**2, color=BLUE)
+- axes.get_area(graph, x_range=[a, b], color=BLUE, opacity=0.4)
+- axes.get_riemann_rectangles(graph, x_range=[a,b], dx=0.2, color=BLUE)
+- axes.get_vertical_line(x=x0, color=YELLOW)
 - axes.get_graph_label(graph, label=r"f(x)", x_val=1, direction=UR)
 - axes.plot_parametric_curve(lambda t: [t, t**2, 0], t_range=[0, 2])
 - NumberLine(x_range=[-3, 3, 1], length=6, include_numbers=True)
@@ -61,6 +65,7 @@ You MUST use Manim **Community Edition** (from manim import *). Do NOT use 3b1b 
   - tracker.set_value(new_val)
   - tracker.animate.set_value(new_val)       # animated change
 - always_redraw(lambda: ...)                 # redraw on each frame
+- TracedPath(point_generator, stroke_color=YELLOW)   # path from moving point
 
 ## Core animations
 - Write(mobject)
@@ -83,7 +88,8 @@ You MUST use Manim **Community Edition** (from manim import *). Do NOT use 3b1b 
 
 ## Composition / timing
 - AnimationGroup(anim1, anim2, lag_ratio=0.0)   # simultaneous
-- LaggedStart(anim1, anim2, lag_ratio=0.3)       # staggered
+- LaggedStart(*anims, lag_ratio=0.2)            # staggered list
+- LaggedStartMap(Create, group, lag_ratio=0.1)
 - Succession(anim1, anim2)                        # sequential
 - self.play(anim, run_time=2.0)
 - self.play(mob.animate.shift(UP), run_time=1.0)

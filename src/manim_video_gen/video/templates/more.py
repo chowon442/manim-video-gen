@@ -11,6 +11,7 @@ from manim_video_gen.video.anim_timing import (
     split_axes_and_plot,
     split_highlight_box,
     split_n_writes,
+    split_write,
 )
 from manim_video_gen.video.templates.equation import (
     _FADE_OUT_SECONDS,
@@ -25,6 +26,54 @@ def _text_imports(*texts: str) -> str:
     if any(has_cjk(t) for t in texts):
         return "from manim import *\nimport numpy as np"
     return "from manim import *\nimport numpy as np"
+
+
+_MANIM_COLORS = frozenset(
+    {
+        "WHITE",
+        "BLACK",
+        "GRAY",
+        "LIGHT_GRAY",
+        "DARK_GRAY",
+        "RED",
+        "GREEN",
+        "BLUE",
+        "YELLOW",
+        "ORANGE",
+        "PURPLE",
+        "TEAL",
+        "PINK",
+        "GOLD",
+        "MAROON",
+    }
+)
+
+
+def _safe_manim_color(name: str, default: str = "WHITE") -> str:
+    u = str(name).strip().upper()
+    return u if u in _MANIM_COLORS else default
+
+
+def _direction_const(name: str) -> str:
+    u = str(name).strip().upper()
+    return u if u in ("UP", "DOWN", "LEFT", "RIGHT") else "UP"
+
+
+def _inject_braces_for_annotations(latex: str, annotations: list[dict[str, Any]]) -> str:
+    """Wrap each target_tex in {{ }} for Brace / get_part_by_tex (first occurrence)."""
+    out = latex
+    for ann in annotations:
+        tok = str(ann.get("target_tex", "")).strip()
+        if not tok:
+            continue
+        needle = "{{" + tok + "}}"
+        if needle in out:
+            continue
+        idx = out.find(tok)
+        if idx < 0:
+            continue
+        out = out[:idx] + "{{" + tok + "}}" + out[idx + len(tok) :]
+    return out
 
 
 class EquationStepsTemplate:
@@ -181,6 +230,173 @@ class Segment(Scene):
     def construct(self):
 {prev_lines}{body}        self.wait({t_end:.3f})
 '''
+
+
+class NumberLinePlotTemplate:
+    """Number line with optional shaded segments and labeled dots."""
+
+    visual_type = "number_line_plot"
+
+    @staticmethod
+    def render_code(
+        *,
+        params: dict[str, Any],
+        duration: float,
+        prev_scene_state: list[SceneObjectState] | None = None,
+    ) -> str:
+        x_range = params.get("x_range") or [-5, 5, 1]
+        if not isinstance(x_range, list) or len(x_range) < 3:
+            x_range = [-5, 5, 1]
+        length = float(params.get("length", 8))
+
+        points_raw = params.get("points") or []
+        points: list[tuple[float, str, str]] = []
+        for p in points_raw:
+            if not isinstance(p, dict):
+                continue
+            points.append(
+                (
+                    float(p.get("value", 0)),
+                    str(p.get("label", "")),
+                    _safe_manim_color(str(p.get("color", "RED")), "RED"),
+                )
+            )
+
+        regions_raw = params.get("regions") or []
+        regions: list[tuple[float, float, str, float]] = []
+        for r in regions_raw:
+            if not isinstance(r, dict):
+                continue
+            regions.append(
+                (
+                    float(r.get("start", 0)),
+                    float(r.get("end", 0)),
+                    _safe_manim_color(str(r.get("color", "BLUE")), "BLUE"),
+                    float(r.get("opacity", 0.28)),
+                )
+            )
+
+        label_tex: list[str] = []
+        for _v, lbl, _c in points:
+            if lbl.strip() and not has_cjk(lbl):
+                label_tex.append(lbl)
+        imports = scene_imports(*label_tex) if label_tex else "from manim import *\nimport numpy as np"
+        prev_lines = _prev_state_lines(prev_scene_state)
+
+        n_plays = 1 + len(regions) + len(points)
+        t_each, t_wait = split_n_writes(duration, max(n_plays, 1), fade_in=0.0)
+
+        body: list[str] = []
+        body.append(
+            f"        nl = NumberLine(x_range={list(x_range)}, length={length}, include_numbers=True)\n"
+        )
+        body.append(f"        self.play(Create(nl), run_time={t_each:.3f})\n")
+
+        for i, (r_start, r_end, col, opacity) in enumerate(regions):
+            body.append(
+                f"        seg_{i} = Line(nl.n2p({r_start}), nl.n2p({r_end}), stroke_width=14, color={col})\n"
+                f"        seg_{i}.set_stroke(opacity={opacity})\n"
+                f"        self.play(FadeIn(seg_{i}), run_time={t_each:.3f})\n"
+            )
+
+        for j, (val, lbl, col) in enumerate(points):
+            body.append(
+                f"        dot_{j} = Dot(nl.n2p({val}), color={col}, radius=0.09)\n"
+            )
+            if not lbl.strip():
+                body.append(
+                    f"        self.play(FadeIn(dot_{j}), run_time={t_each:.3f})\n"
+                )
+                continue
+            if has_cjk(lbl):
+                body.append(
+                    f"        lbl_{j} = Text({repr(lbl)}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
+                    f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+                )
+            else:
+                body.append(
+                    f"        lbl_{j} = MathTex({repr(lbl)}, font_size=30).next_to(dot_{j}, UP, buff=0.14)\n"
+                    f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+                )
+
+        body.append(f"        self.wait({t_wait:.3f})\n")
+
+        return f'''{imports}
+
+class Segment(Scene):
+    def construct(self):
+{prev_lines}{"".join(body)}'''
+
+
+class AnnotatedEquationTemplate:
+    """MathTex with sequential Brace + Text annotations on {{token}} parts."""
+
+    visual_type = "annotated_equation"
+
+    @staticmethod
+    def render_code(
+        *,
+        params: dict[str, Any],
+        duration: float,
+        prev_scene_state: list[SceneObjectState] | None = None,
+    ) -> str:
+        raw_latex = str(params.get("latex", r"0=0"))
+        ann_raw = params.get("annotations") or []
+        annotations = [a for a in ann_raw if isinstance(a, dict)]
+        braced = _inject_braces_for_annotations(raw_latex, annotations)
+
+        all_latex = [braced]
+        if prev_scene_state:
+            all_latex.extend(st.latex for st in prev_scene_state)
+        imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
+        prev_lines = _prev_state_lines(prev_scene_state)
+
+        n_ann = len([a for a in annotations if str(a.get("target_tex", "")).strip()])
+        t_w, t_rest = split_write(float(duration) * 0.38)
+        budget = max(0.01, float(duration) - t_w - 0.12)
+        t_br = (
+            min(0.85, max(0.22, budget / max(n_ann * 2, 1)))
+            if n_ann
+            else 0.0
+        )
+        used = t_w + t_br * 2 * n_ann
+        t_end = max(0.12, float(duration) - used)
+
+        lines: list[str] = [
+            f"        eq = MathTex({repr(braced)}, font_size=44)\n",
+            f"        self.play(Write(eq), run_time={t_w:.3f})\n",
+        ]
+        idx = 0
+        for ann in annotations:
+            tok = str(ann.get("target_tex", "")).strip()
+            if not tok:
+                continue
+            dire = _direction_const(str(ann.get("direction", "UP")))
+            col = _safe_manim_color(str(ann.get("color", "YELLOW")), "YELLOW")
+            txt = str(ann.get("text", "")).strip()
+            bi = f"br_{idx}"
+            lines.append(
+                f"        {bi} = Brace(eq.get_part_by_tex({repr(tok)}), {dire}, color={col})\n"
+            )
+            if txt:
+                lines.append(
+                    f"        tx_{idx} = Text({repr(txt)}, font_size=22)\n"
+                    f"        tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
+                    f"        self.play(GrowFromCenter({bi}), FadeIn(tx_{idx}), run_time={t_br:.3f})\n"
+                )
+            else:
+                lines.append(
+                    f"        self.play(GrowFromCenter({bi}), run_time={t_br:.3f})\n"
+                )
+            idx += 1
+
+        lines.append(f"        self.wait({t_end:.3f})\n")
+
+        return f'''{imports}
+
+class Segment(Scene):
+    def construct(self):
+{prev_lines}{"".join(lines)}'''
 
 
 class GraphPlotTemplate:

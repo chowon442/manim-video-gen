@@ -53,6 +53,13 @@ def _collect_latex_values(
                 values.append(str(item["latex"]))
             elif isinstance(item, str):
                 values.append(item)
+    pts = params.get("points")
+    if isinstance(pts, list):
+        for p in pts:
+            if isinstance(p, dict):
+                lab = p.get("label")
+                if isinstance(lab, str) and lab.strip() and not has_cjk(lab):
+                    values.append(lab)
     if prev_scene_state:
         values.extend(st.latex for st in prev_scene_state)
     return values

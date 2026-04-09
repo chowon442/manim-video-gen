@@ -62,6 +62,57 @@ class Segment(Scene):
         self.play(Create(nl), run_time=1.0)
         self.play(FadeIn(d1), FadeIn(d2), run_time=1.0)
         self.wait(0.5)
+
+### Example F — Number line segment + shaded interval
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        nl = NumberLine(x_range=[-4, 4, 1], length=10, include_numbers=True)
+        seg = Line(nl.n2p(-2), nl.n2p(1), stroke_width=16, color=BLUE)
+        seg.set_stroke(opacity=0.35)
+        d1 = Dot(nl.n2p(-2), color=RED, radius=0.1)
+        self.play(Create(nl), run_time=0.9)
+        self.play(FadeIn(seg), run_time=0.5)
+        self.play(FadeIn(d1), run_time=0.5)
+        self.wait(0.4)
+
+### Example G — Unit circle + point on circle
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        c = Circle(radius=2.0, color=WHITE)
+        p = Dot(np.array([np.sqrt(2.0), np.sqrt(2.0), 0.0]), color=YELLOW, radius=0.08)
+        self.play(Create(c), run_time=0.8)
+        self.play(FadeIn(p), run_time=0.5)
+        self.wait(0.4)
+
+### Example H — MathTex with brace groups + Text label (Korean beside, not inside MathTex)
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        eq = MathTex(r"{{a}} x^2 + {{b}} x + {{c}} = 0", font_size=44)
+        self.play(Write(eq), run_time=1.0)
+        b0 = Brace(eq.get_part_by_tex("a"), UP, color=YELLOW)
+        t0 = Text("coeff", font_size=22)
+        t0.next_to(b0, UP, buff=0.1)
+        self.play(GrowFromCenter(b0), FadeIn(t0), run_time=0.8)
+        self.wait(0.4)
+
+### Example I — Axes + area under graph
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        ax = Axes(x_range=[0, 3, 1], y_range=[0, 4, 1], x_length=6, y_length=4)
+        g = ax.plot(lambda x: x ** 2, color=BLUE)
+        region = ax.get_area(g, x_range=[0.5, 2.0], color=BLUE, opacity=0.35)
+        self.play(Create(ax), run_time=0.7)
+        self.play(Create(g), run_time=0.9)
+        self.play(FadeIn(region), run_time=0.8)
+        self.wait(0.4)
 """
 
 

@@ -18,6 +18,8 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 
 `equation_derivation`은 한 세그먼트에서 위에서 아래로 화살표·짧은 주석과 함께 수식 단계를 **누적** 표시합니다(연속 이항·인수분해 등).
 
+추가 시각 타입: **`number_line_plot`**(수직선·구간 음영·해 점), **`annotated_equation`**(`{{토큰}}` 부분에 Brace+텍스트 주석), **`visual_scene`**(등록 템플릿 없음 → LLM이 Manim 코드 직접 생성). 풀이 단계 JSON에 **`visualization_hints`**(선택)를 두어 scriptify가 그래프·수직선 등을 쓰기 쉽게 합니다.
+
 ## 설치
 
 ```bash

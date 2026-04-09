@@ -21,3 +21,7 @@ class SolutionPlan(BaseModel):
 
     title: str = Field(default="풀이", description="Short title for the solution")
     steps: list[SolutionStep] = Field(default_factory=list, min_length=1)
+    visualization_hints: list[str] = Field(
+        default_factory=list,
+        description="Optional ideas for on-screen visuals (graphs, number line, geometry) for the video pass",
+    )

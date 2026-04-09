@@ -12,12 +12,14 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
       "explanation": string (Korean, clear teacher voice),
       "latex_expression": string|null (key LaTeX for the step, optional)
     }
-  ]
+  ],
+  "visualization_hints": [ string ]
 }
 Rules:
 - Minimum 2 steps unless trivial.
 - Use Korean in explanations.
 - latex_expression should be valid LaTeX snippets without surrounding $$ unless needed.
+- visualization_hints: 0–5 short Korean or English phrases suggesting what could be drawn (e.g. "이차함수 그래프로 근 위치 표시", "수직선에 두 해 점 표시", "인수분해 전개를 단계별로"). Empty array if nothing special.
 """
 
 

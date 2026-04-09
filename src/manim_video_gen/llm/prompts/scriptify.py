@@ -101,10 +101,36 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
    - Use for the LAST segment when appropriate. narration summarizes; must align with visual_params.summary_text.
    - visual_params: summary_text (string).
 
+10) number_line_plot
+   - Screen: a horizontal NumberLine, optional shaded segment(s) between two x-values, optional labeled Dot(s) at values (roots, endpoints).
+   - Use when explaining roots on a line, intervals, or "해가 여기와 여기" — NOT for full function graphs (use graph_plot).
+   - narration MUST refer to the same values/labels as in visual_params.points / regions.
+   - visual_params: x_range ([min, max, step], default [-5,5,1]), length (optional, default 8), points (optional array of {value: number, label: string, color: string Manim name e.g. RED}), regions (optional array of {start: number, end: number, color: string, opacity: number 0–1}).
+
+11) annotated_equation
+   - Screen: one MathTex equation; then sequentially Brace + Korean Text labels on parts of the equation (coefficients, terms).
+   - visual_params.latex MUST use {{token}} around EACH substring that appears in annotations[].target_tex (e.g. "{{a}}x^2+{{b}}x+{{c}}=0" with targets a, b, c). Manim needs double-brace groups for get_part_by_tex.
+   - narration MUST match which part is being labeled.
+   - visual_params: latex (string), annotations (array of {target_tex: string, text: string Korean label, direction: "UP"|"DOWN"|"LEFT"|"RIGHT", color: optional Manim color name}).
+
+12) visual_scene
+   - Screen: NOT a fixed template — the pipeline runs LLM Manim code generation for this segment (rich visuals: unit circle, areas, custom diagrams).
+   - Use when number_line_plot / graph_plot / annotated_equation are not enough and a bespoke scene is worth the risk of codegen failure (fallback may simplify).
+   - visual_description MUST be a concrete director brief (what objects, layout, animation order). visual_params may include hints: { "hints": "..." } or free-form keys the coder can use.
+   - narration must still match what you ask the code to show; avoid promising something not in visual_description.
+
+## Visualization mix (strong recommendation)
+
+- The solution JSON may include visualization_hints — treat them as suggestions; pick visual_types that realize them when they fit.
+- Across the whole video (not every segment): include AT LEAST 1–2 segments whose visual_type is NOT equation_write / equation_transform / equation_steps / equation_derivation (e.g. graph_plot, number_line_plot, annotated_equation, or visual_scene) when the math content supports it (roots, graphs, labeling coefficients).
+- Prefer number_line_plot after finding numeric roots; prefer annotated_equation when explaining what a, b, c (or similar) mean in a standard form; prefer graph_plot for 함수의 그래프·최솟값·교점.
+- Prefer a richer template over visual_scene when a template fits; use visual_scene only for scenes that need custom Manim code.
+- Do not default to "equations only" if a visualization would clarify the same step.
+
 ## Narration–visual alignment rules (mandatory)
 
 - narration describes ONLY what is visible in THIS segment for the chosen visual_type and visual_params.
-- Do NOT say "그래프", "좌표평면", "그림", "도형", "표" unless visual_type is graph_plot (or later types that draw them). For equation-only types, stay on equations.
+- Do NOT say "그래프", "좌표평면", "그림", "도형", "표", "수직선" unless visual_type matches (graph_plot, number_line_plot, visual_scene, etc.). For equation-only types, stay on equations.
 - Do NOT describe operation A (e.g. "양변에 3을 곱하면") while visual_params show a different operation (e.g. factoring).
 - If you use deictics ("이 식", "여기서", "위 식"), the referred equation MUST appear in visual_params or prev_scene_state.
 - visual_description should be a concise director note in Korean that matches narration and params (not contradictory).
@@ -157,6 +183,7 @@ def scriptify_user_prompt(plan: SolutionPlan) -> str:
     payload = plan.model_dump()
     return (
         "다음 풀이를 영상 세그먼트로 나누어 JSON으로 만드세요.\n"
-        "나레이션은 한국어로만 쓰고, 각 세그먼트에서 말하는 내용과 화면(visual_type, visual_params)이 반드시 일치해야 합니다.\n\n"
+        "나레이션은 한국어로만 쓰고, 각 세그먼트에서 말하는 내용과 화면(visual_type, visual_params)이 반드시 일치해야 합니다.\n"
+        "solution의 visualization_hints가 있으면 가능한 범위에서 그래프·수직선·주석 수식 등 시각 유형을 반영하세요.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
     )

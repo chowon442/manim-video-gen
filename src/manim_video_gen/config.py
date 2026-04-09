@@ -70,9 +70,42 @@ class Settings(BaseSettings):
         validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
     )
 
-    tts_provider: Literal["elevenlabs", "azure"] = Field(
+    tts_provider: Literal["elevenlabs", "azure", "replicate"] = Field(
         default="elevenlabs",
         validation_alias="MANIM_VIDEO_GEN_TTS_PROVIDER",
+    )
+
+    replicate_api_token: str = Field(
+        default="",
+        validation_alias="REPLICATE_API_TOKEN",
+    )
+    replicate_tts_mode: Literal["custom_voice", "voice_clone", "voice_design"] = Field(
+        default="custom_voice",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_MODE",
+    )
+    replicate_tts_speaker: str = Field(
+        default="Aiden",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_SPEAKER",
+    )
+    replicate_tts_language: str = Field(
+        default="auto",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_LANGUAGE",
+    )
+    replicate_tts_voice_description: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_VOICE_DESC",
+    )
+    replicate_tts_reference_audio: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_REF_AUDIO",
+    )
+    replicate_tts_reference_text: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_REF_TEXT",
+    )
+    replicate_tts_style_instruction: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_STYLE",
     )
     azure_speech_key: str = Field(
         default="",
@@ -126,6 +159,10 @@ class Settings(BaseSettings):
     def require_elevenlabs(self) -> None:
         if not self.elevenlabs_api_key.strip():
             raise ValueError("ELEVENLABS_API_KEY is not set")
+
+    def require_replicate(self) -> None:
+        if not self.replicate_api_token.strip():
+            raise ValueError("REPLICATE_API_TOKEN is not set")
 
 
 def get_settings() -> Settings:

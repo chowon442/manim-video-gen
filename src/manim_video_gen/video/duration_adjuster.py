@@ -58,7 +58,8 @@ def adjust_duration(code: str, target_duration: float) -> str:
     """Append a final self.wait(...) inside construct() if estimated time is short."""
     estimated = estimate_construct_duration_seconds(code)
     diff = float(target_duration) - float(estimated)
-    if diff <= 0.05:
+    # Templates already end with self.wait; avoid appending a second padding wait.
+    if diff <= 0.15:
         if diff < -0.5:
             logger.warning(
                 "Estimated animation time %.3fs exceeds target %.3fs by %.3fs",

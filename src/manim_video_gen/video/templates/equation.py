@@ -6,6 +6,11 @@ import re
 from typing import Any
 
 from manim_video_gen.models.script import SceneObjectState
+from manim_video_gen.video.anim_timing import (
+    split_transform,
+    split_transform_no_prev,
+    split_write,
+)
 from manim_video_gen.video.tex_template import has_cjk, scene_imports
 
 
@@ -41,6 +46,13 @@ def _collect_latex_values(
         v = params.get(key)
         if isinstance(v, str):
             values.append(v)
+    steps_raw = params.get("steps")
+    if isinstance(steps_raw, list):
+        for item in steps_raw:
+            if isinstance(item, dict) and "latex" in item:
+                values.append(str(item["latex"]))
+            elif isinstance(item, str):
+                values.append(item)
     if prev_scene_state:
         values.extend(st.latex for st in prev_scene_state)
     return values
@@ -73,8 +85,7 @@ class EquationWriteTemplate:
         font_size = int(params.get("font_size", 48))
         color = str(params.get("color", "WHITE"))
 
-        t_write = max(0.4, min(duration * 0.65, duration - 0.15))
-        t_wait = max(0.15, duration - t_write)
+        t_write, t_wait = split_write(duration)
 
         all_latex = _collect_latex_values(params, prev_scene_state)
         imports = scene_imports(*all_latex)
@@ -108,8 +119,7 @@ class EquationTransformTemplate:
         prev_lines = _prev_state_lines(prev_scene_state)
 
         if prev_scene_state:
-            t_tx = max(0.5, duration * 0.65)
-            t_end = max(0.15, duration - t_tx)
+            t_tx, t_end = split_transform(duration)
             core = f'''{prev_lines}        eq2 = MathTex({repr(to_latex)})
         self.play(TransformMatchingTex(_p0, eq2), run_time={t_tx:.3f})
         self.wait({t_end:.3f})
@@ -120,10 +130,7 @@ class Segment(Scene):
     def construct(self):
 {core}'''
 
-        t_intro = max(0.25, duration * 0.22)
-        t_mid = max(0.2, duration * 0.12)
-        t_tx = max(0.35, duration * 0.40)
-        t_end = max(0.15, duration - (t_intro + t_mid + t_tx))
+        t_intro, t_mid, t_tx, t_end = split_transform_no_prev(duration)
 
         return f'''{imports}
 

@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from manim_video_gen.models.script import SceneObjectState
+from manim_video_gen.video.anim_timing import (
+    ANIM_CAP_FADE,
+    ANIM_GAP,
+    split_axes_and_plot,
+    split_highlight_box,
+    split_n_writes,
+)
 from manim_video_gen.video.templates.equation import (
     _FADE_OUT_SECONDS,
     _collect_latex_values,
@@ -40,9 +47,7 @@ class EquationStepsTemplate:
         buff = 0.45 if arrange_mob == "DOWN" else 0.35
 
         n = len(steps)
-        t_each = max(0.25, duration / max(n + 1, 2))
-        t_wait = max(0.12, duration - t_each * n)
-        t_wait = min(t_wait, t_each)
+        t_each, t_wait = split_n_writes(duration, n, fade_in=0.0)
 
         tex_lines = ",\n            ".join(f"MathTex({repr(s)})" for s in steps)
         all_latex = list(steps)
@@ -62,6 +67,119 @@ class Segment(Scene):
         for i, mob in enumerate(group):
             self.play(Write(mob), run_time={t_each:.3f})
         self.wait({t_wait:.3f})
+'''
+
+
+def _parse_derivation_steps(params: dict[str, Any]) -> list[tuple[str, str]]:
+    raw = params.get("steps") or []
+    out: list[tuple[str, str]] = []
+    for item in raw:
+        if isinstance(item, dict):
+            out.append(
+                (
+                    str(item.get("latex", r"0=0")),
+                    str(item.get("annotation", "") or ""),
+                )
+            )
+        elif isinstance(item, str):
+            out.append((item, ""))
+    if not out:
+        out = [(r"0=0", "")]
+    return out
+
+
+def _derivation_segment_times(
+    duration: float,
+    n: int,
+    has_ann: list[bool],
+) -> tuple[float, list[tuple[float, float, float]], float]:
+    """First Write, then per transition (arrow, ann_or_0, eq_write), final wait."""
+    d = float(duration)
+    if n <= 0:
+        n = 1
+    trans = max(n - 1, 0)
+    plays = 1 + sum(2 + (1 if (j < len(has_ann) and has_ann[j]) else 0) for j in range(trans))
+    share = d / max(plays, 1)
+    t0 = min(1.2, max(0.3, share))
+    per_trans: list[tuple[float, float, float]] = []
+    for j in range(trans):
+        ta = min(ANIM_CAP_FADE, max(0.12, share * 0.7))
+        ann_t = (
+            min(ANIM_CAP_FADE, max(0.12, share * 0.7))
+            if j < len(has_ann) and has_ann[j]
+            else 0.0
+        )
+        tw = min(1.2, max(0.28, share))
+        per_trans.append((ta, ann_t, tw))
+    used = t0 + sum(a + an + w for a, an, w in per_trans)
+    t_end = max(0.12, d - used)
+    return t0, per_trans, t_end
+
+
+class EquationDerivationTemplate:
+    """Stack related equations with arrows and optional Korean annotations (Text)."""
+
+    visual_type = "equation_derivation"
+
+    @staticmethod
+    def render_code(
+        *,
+        params: dict[str, Any],
+        duration: float,
+        prev_scene_state: list[SceneObjectState] | None = None,
+    ) -> str:
+        parsed = _parse_derivation_steps(params)
+        n = len(parsed)
+        has_ann = [bool(parsed[i][1].strip()) for i in range(1, n)]
+        t0, per_trans, t_end = _derivation_segment_times(duration, n, has_ann)
+
+        latex_list = [p[0] for p in parsed]
+        if prev_scene_state:
+            latex_list.extend(st.latex for st in prev_scene_state)
+        imports = (
+            scene_imports(*latex_list)
+            if latex_list
+            else "from manim import *\nimport numpy as np"
+        )
+        prev_lines = _prev_state_lines(prev_scene_state)
+
+        lines: list[str] = []
+        first_latex = parsed[0][0]
+        lines.append(
+            f"        cur = MathTex({repr(first_latex)})\n"
+            f"        cur.to_edge(UP, buff=0.55)\n"
+            f"        self.play(Write(cur), run_time={t0:.3f})\n"
+        )
+        for idx in range(1, n):
+            latex_i, ann = parsed[idx]
+            ta, ann_t, tw = per_trans[idx - 1]
+            arr_name = f"arr_{idx}"
+            lines.append(
+                f"        {arr_name} = MathTex(r\"\\Downarrow\", font_size=38)\n"
+                f"        {arr_name}.next_to(cur, DOWN, buff={ANIM_GAP:.2f})\n"
+                f"        self.play(FadeIn({arr_name}), run_time={ta:.3f})\n"
+            )
+            if ann.strip():
+                lab_name = f"lab_{idx}"
+                lines.append(
+                    f"        {lab_name} = Text({repr(ann.strip())}, font_size=26)\n"
+                    f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
+                    f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
+                )
+            eq_name = f"eq_{idx}"
+            lines.append(
+                f"        {eq_name} = MathTex({repr(latex_i)})\n"
+                f"        {eq_name}.next_to({arr_name}, DOWN, buff={ANIM_GAP + 0.1:.2f})\n"
+                f"        self.play(Write({eq_name}), run_time={tw:.3f})\n"
+                f"        cur = {eq_name}\n"
+            )
+
+        body = "".join(lines)
+        return f'''{imports}
+
+class Segment(Scene):
+    def construct(self):
+{prev_lines}{body}        self.wait({t_end:.3f})
 '''
 
 
@@ -99,9 +217,11 @@ class GraphPlotTemplate:
         prev_lines = _prev_state_lines(prev_scene_state)
 
         fade_out = _FADE_OUT_SECONDS
-        t_axes = max(0.35, duration * 0.18)
-        t_plot = max(0.5, duration * 0.50)
-        t_end = max(0.15, duration - t_axes - t_plot - 0.4 - fade_out)
+        t_axes, t_plot, t_end = split_axes_and_plot(
+            duration,
+            has_label_line=bool(func_latex and str(func_latex).strip()),
+            fade_out=fade_out,
+        )
 
         return f'''{imports}
 
@@ -138,9 +258,7 @@ class HighlightResultTemplate:
         imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
         prev_lines = _prev_state_lines(prev_scene_state)
 
-        t_in = max(0.35, duration * 0.30)
-        t_hold = max(0.2, duration * 0.40)
-        t_out = max(0.1, duration - t_in - t_hold)
+        t_in, t_box, t_hold, t_out = split_highlight_box(duration)
 
         return f'''{imports}
 
@@ -149,9 +267,9 @@ class Segment(Scene):
 {prev_lines}        eq = MathTex({repr(latex)})
         box = SurroundingRectangle(eq, color={box_color}, buff=0.15)
         self.play(Write(eq), run_time={t_in:.3f})
-        self.play(Create(box), run_time={t_in * 0.6:.3f})
+        self.play(Create(box), run_time={t_box:.3f})
         self.wait({t_hold:.3f})
-        self.play(FadeOut(box), run_time={min(t_out, 0.4):.3f})
+        self.play(FadeOut(box), run_time={min(t_out, ANIM_CAP_FADE):.3f})
 '''
 
 
@@ -170,9 +288,9 @@ class TitleCardTemplate:
         imports = _text_imports(title, subtitle)
 
         fade_out = _FADE_OUT_SECONDS
-        t1 = max(0.35, duration * 0.30)
-        t2 = max(0.0, duration * 0.22) if subtitle else 0.0
-        t_end = max(0.15, duration - t1 - t2 - fade_out)
+        t1 = min(1.0, max(0.35, duration * 0.26))
+        t2 = min(0.85, max(0.12, duration * 0.18)) if subtitle else 0.0
+        t_end = max(0.12, duration - t1 - t2 - fade_out)
 
         sub_block = ""
         if subtitle.strip():
@@ -208,8 +326,8 @@ class IntroProblemTemplate:
         label = str(params.get("label", "문제"))
 
         fade_out = _FADE_OUT_SECONDS
-        t1 = max(0.3, duration * 0.18)
-        t2 = max(0.4, duration * 0.50)
+        t1 = min(0.75, max(0.28, duration * 0.16))
+        t2 = min(1.15, max(0.35, duration * 0.42))
         t_end = max(0.12, duration - t1 - t2 - fade_out)
 
         return f'''{imports}
@@ -241,8 +359,8 @@ class OutroSummaryTemplate:
         extra_latex = params.get("highlight_latex")
 
         fade_out = _FADE_OUT_SECONDS
-        t1 = max(0.35, duration * 0.25)
-        t2 = max(0.35, duration * 0.40)
+        t1 = min(0.85, max(0.3, duration * 0.22))
+        t2 = min(0.9, max(0.3, duration * 0.36))
         t_end = max(0.12, duration - t1 - t2 - fade_out)
 
         eq_block = ""

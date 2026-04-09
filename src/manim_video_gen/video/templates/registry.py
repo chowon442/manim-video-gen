@@ -10,6 +10,7 @@ from manim_video_gen.video.templates.equation import (
     EquationWriteTemplate,
 )
 from manim_video_gen.video.templates.more import (
+    EquationDerivationTemplate,
     EquationStepsTemplate,
     GraphPlotTemplate,
     HighlightResultTemplate,
@@ -37,6 +38,14 @@ def _render_equation_transform(segment: Segment, duration: float) -> str:
 
 def _render_steps(segment: Segment, duration: float) -> str:
     return EquationStepsTemplate.render_code(
+        params=segment.visual_params,
+        duration=duration,
+        prev_scene_state=segment.prev_scene_state,
+    )
+
+
+def _render_equation_derivation(segment: Segment, duration: float) -> str:
+    return EquationDerivationTemplate.render_code(
         params=segment.visual_params,
         duration=duration,
         prev_scene_state=segment.prev_scene_state,
@@ -87,6 +96,7 @@ _TEMPLATE_RENDERERS: dict[str, Callable[[Segment, float], str]] = {
     EquationWriteTemplate.visual_type: _render_equation_write,
     EquationTransformTemplate.visual_type: _render_equation_transform,
     EquationStepsTemplate.visual_type: _render_steps,
+    EquationDerivationTemplate.visual_type: _render_equation_derivation,
     GraphPlotTemplate.visual_type: _render_graph,
     HighlightResultTemplate.visual_type: _render_highlight,
     TitleCardTemplate.visual_type: _render_title,

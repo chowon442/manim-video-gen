@@ -14,7 +14,9 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 
 선택 기능: 하단 자막(`MANIM_VIDEO_GEN_BURN_SUBTITLES`), 배경음(`MANIM_VIDEO_GEN_BGM_PATH`), 출력 해상도/FPS(`MANIM_VIDEO_GEN_VIDEO_*`), 진행 콜백(`generate_video(..., on_progress=...)`), Docker(`Dockerfile`).
 
-연속 수식 세그먼트(`prev_scene_state`로 이어지는 `equation_*` / `highlight_result`)는 **하나의 Manim Scene으로 병합**되어 `TransformMatchingTex` 등으로 자연스럽게 전환됩니다. 렌더 실패 시 자동으로 세그먼트별 렌더로 폴백합니다.
+연속 수식 세그먼트(`prev_scene_state`로 이어지는 `equation_*` / `equation_derivation` / `highlight_result`)는 **하나의 Manim Scene으로 병합**되어 `TransformMatchingTex` 등으로 자연스럽게 전환됩니다. 렌더 실패 시 자동으로 세그먼트별 렌더로 폴백합니다. 템플릿·체인 렌더는 TTS 길이에 맞추되 `Write`/`Transform` 시간에 **상한**을 두어 앞쪽에서 빠르게 연출하고 나머지는 `wait`로 맞춥니다.
+
+`equation_derivation`은 한 세그먼트에서 위에서 아래로 화살표·짧은 주석과 함께 수식 단계를 **누적** 표시합니다(연속 이항·인수분해 등).
 
 ## 설치
 

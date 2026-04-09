@@ -9,6 +9,7 @@ EQUATION_TYPES = frozenset(
         "equation_write",
         "equation_transform",
         "equation_steps",
+        "equation_derivation",
         "highlight_result",
     }
 )

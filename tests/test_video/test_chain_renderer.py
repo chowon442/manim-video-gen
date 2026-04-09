@@ -85,6 +85,26 @@ def test_chain_ends_with_mobjects_fadeout():
     assert "FadeOut(m)" in code
 
 
+def test_equation_derivation_in_chain():
+    s0 = Segment(
+        id=0,
+        narration="a",
+        visual_description="d",
+        visual_type="equation_derivation",
+        visual_params={
+            "steps": [
+                {"latex": r"x^2+1=0"},
+                {"latex": r"x^2=-1", "annotation": "정리"},
+            ]
+        },
+    )
+    ch = _chain((s0, 6.0))
+    code = ChainRenderer().render_chain(ch)
+    assert r"\Downarrow" in code or "Downarrow" in code
+    assert "Text(" in code
+    compile(code, "<chain>", "exec")
+
+
 def test_equation_steps_in_chain():
     prev = [SceneObjectState(latex=r"old", position_expr="ORIGIN")]
     s0 = Segment(

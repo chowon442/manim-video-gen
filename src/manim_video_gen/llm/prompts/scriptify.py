@@ -68,28 +68,35 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
    - narration MUST walk through those same lines in order (what each line says).
    - visual_params: steps (array of LaTeX strings), arrange_direction (optional: "DOWN" or "RIGHT", default "DOWN").
 
-4) graph_plot
+4) equation_derivation
+   - Screen: ONE continuous derivation board. The first line is the starting equation at the top; each next line is placed BELOW with a downward arrow and optional Korean annotation (Text) between lines (e.g. "x를 이항", "인수분해"). Earlier lines stay visible — viewers see the full chain at once after the segment ends.
+   - Use this instead of splitting the same algebraic story across separate equation_write + equation_transform segments when 2–4 related rewrites belong together (e.g. move term → standard form → factor).
+   - narration MUST follow the same sequence of lines and annotations; do not mention graphs unless you switch to graph_plot.
+   - visual_params: steps (array of objects). First step: {"latex": "..."}. Later steps: {"latex": "...", "annotation": "짧은 한글 설명"} — annotation may be empty string if not needed.
+   - Do NOT use equation_derivation for more than 5 equation lines; split into another segment if longer.
+
+5) graph_plot
    - Screen: coordinate axes and a function graph.
    - narration MUST mention the graph / curve / shape (e.g. 포물선) — do NOT use this type if you only show equations.
    - visual_params: func_python (string, MUST be a single Python lambda like "lambda x: x**2"), x_range ([min,max,step]), y_range ([min,max,step]),
      x_length (optional number, default 6), y_length (optional number, default 4), color (optional, default BLUE), func_latex (optional label string).
 
-5) highlight_result
+6) highlight_result
    - Screen: one equation with a surrounding rectangle emphasis.
    - narration MUST present or stress the final answer / result that matches visual_params.latex.
    - visual_params: latex (string), box_color (optional, default YELLOW).
 
-6) title_card
+7) title_card
    - Screen: title and optional subtitle as plain text (Korean allowed).
    - narration MUST match what appears (e.g. introduce the lesson title).
    - visual_params: title (string), subtitle (string, optional, can be empty).
 
-7) intro_problem
+8) intro_problem
    - Screen: problem statement as text (opening).
    - Use for the FIRST segment only when appropriate. narration introduces the problem; must align with visual_params.problem_text.
    - visual_params: problem_text (string) — same wording as the given problem.
 
-8) outro_summary
+9) outro_summary
    - Screen: short closing summary text.
    - Use for the LAST segment when appropriate. narration summarizes; must align with visual_params.summary_text.
    - visual_params: summary_text (string).
@@ -137,12 +144,12 @@ Each segment is rendered as an independent Manim scene. To prevent jarring jumps
    - "이어서...", "다음으로...", "이 식에서...", "위 결과를 이용하면...", "그러면..."
    - The FIRST segment (id=0) starts fresh. The LAST segment wraps up with a conclusion.
 
-3. Visual continuity: When transitioning between equation-type segments, prefer equation_transform
-   over equation_write to show the algebraic step visually (A → B).
-   Only use equation_write when introducing a BRAND NEW equation with no prior context.
+3. Visual continuity: Prefer equation_derivation for several related rewrites in one segment (lines stay on screen).
+   For a single A→B swap with no need to keep the previous line visible, use equation_transform.
+   Use equation_write only when introducing a BRAND NEW equation with no prior context.
 
-4. Pacing: Each segment should cover ONE logical step. Avoid cramming multiple ideas into one segment
-   or splitting one idea across too many segments.
+4. Pacing: Prefer one equation_derivation segment for 2–4 chained algebraic steps instead of many tiny segments.
+   Avoid splitting one idea across too many segments; avoid cramming unrelated ideas into one segment.
 """
 
 

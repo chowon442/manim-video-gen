@@ -78,4 +78,14 @@ def test_prev_none_starts_new_chain_even_after_equation():
 
 def test_equation_types_constant():
     assert "equation_write" in EQUATION_TYPES
+    assert "equation_derivation" in EQUATION_TYPES
     assert "highlight_result" in EQUATION_TYPES
+
+
+def test_equation_derivation_chains_with_prev():
+    prev = [SceneObjectState(latex=r"a", position_expr="ORIGIN")]
+    s0 = _seg(0, "equation_write", params={"latex": r"x"})
+    s1 = _seg(1, "equation_derivation", prev=prev, params={"steps": [{"latex": r"1=1"}]})
+    chains = group_into_chains([s0, s1], [_tts(1.0), _tts(2.0)])
+    assert len(chains) == 1
+    assert chains[0].is_equation_chain is True

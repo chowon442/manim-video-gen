@@ -1,5 +1,6 @@
 # Temporary workspace (Windows cross-drive dvisvgm workaround)
 .tmp/
+.worktrees/
 
 # Secrets / Environment
 .env

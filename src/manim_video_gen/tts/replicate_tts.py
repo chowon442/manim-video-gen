@@ -6,11 +6,13 @@ import asyncio
 import json
 import logging
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 import replicate
+from replicate.exceptions import ReplicateError
 
 from manim_video_gen.config import Settings
 from manim_video_gen.exceptions import TTSError
@@ -20,6 +22,9 @@ from manim_video_gen.tts.base import TTSProvider
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = "qwen/qwen3-tts"
+_429_MAX_ATTEMPTS = 8
+_429_BASE_WAIT_S = 2.0
+_429_MAX_WAIT_S = 60.0
 
 
 def _ffprobe_duration_seconds(path: Path) -> float:
@@ -119,9 +124,51 @@ class ReplicateTTS(TTSProvider):
             )
         self._settings = settings
         self._client = replicate.Client(api_token=token)
+        self._last_prediction_monotonic: float | None = None
 
     def _run_sync(self, input_payload: dict[str, Any]) -> Any:
         return self._client.run(_MODEL_ID, input=input_payload)
+
+    async def _respect_min_interval(self) -> None:
+        min_iv = self._settings.replicate_tts_min_interval_seconds
+        if min_iv <= 0 or self._last_prediction_monotonic is None:
+            return
+        elapsed = time.monotonic() - self._last_prediction_monotonic
+        wait = min_iv - elapsed
+        if wait > 0:
+            logger.debug("Replicate TTS spacing: sleeping %.2fs before prediction", wait)
+            await asyncio.sleep(wait)
+
+    async def _run_predict_with_retry(self, input_payload: dict[str, Any]) -> Any:
+        for attempt in range(_429_MAX_ATTEMPTS):
+            try:
+                return await asyncio.to_thread(self._run_sync, input_payload)
+            except ReplicateError as exc:
+                if exc.status != 429:
+                    logger.exception("Replicate qwen3-tts run failed")
+                    raise TTSError(
+                        f"Replicate TTS failed: {exc}",
+                        stage="tts",
+                        detail=str(exc)[:800],
+                    ) from exc
+                if attempt >= _429_MAX_ATTEMPTS - 1:
+                    logger.exception("Replicate qwen3-tts run failed after 429 retries")
+                    raise TTSError(
+                        f"Replicate TTS failed: {exc}",
+                        stage="tts",
+                        detail=str(exc)[:800],
+                    ) from exc
+                wait = min(
+                    _429_MAX_WAIT_S,
+                    _429_BASE_WAIT_S * (2**attempt),
+                )
+                logger.warning(
+                    "Replicate TTS throttled (429), waiting %.1fs then retry %s/%s",
+                    wait,
+                    attempt + 2,
+                    _429_MAX_ATTEMPTS,
+                )
+                await asyncio.sleep(wait)
 
     async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
         if not text.strip():
@@ -130,8 +177,11 @@ class ReplicateTTS(TTSProvider):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         input_payload = _build_input(self._settings, text)
 
+        await self._respect_min_interval()
         try:
-            raw_output = await asyncio.to_thread(self._run_sync, input_payload)
+            raw_output = await self._run_predict_with_retry(input_payload)
+        except TTSError:
+            raise
         except Exception as exc:
             logger.exception("Replicate qwen3-tts run failed")
             raise TTSError(
@@ -139,6 +189,7 @@ class ReplicateTTS(TTSProvider):
                 stage="tts",
                 detail=str(exc)[:800],
             ) from exc
+        self._last_prediction_monotonic = time.monotonic()
 
         url = _output_to_url(raw_output)
         timeout = httpx.Timeout(self._settings.tts_timeout_seconds)

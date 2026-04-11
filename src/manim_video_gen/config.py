@@ -107,6 +107,14 @@ class Settings(BaseSettings):
         default="",
         validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_STYLE",
     )
+    replicate_tts_min_interval_seconds: float = Field(
+        default=0.0,
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_MIN_INTERVAL",
+        description=(
+            "Minimum seconds between Replicate prediction calls. "
+            "Use ~11 when account credit is under $5 (6/min limit) to avoid 429."
+        ),
+    )
     azure_speech_key: str = Field(
         default="",
         validation_alias="AZURE_SPEECH_KEY",

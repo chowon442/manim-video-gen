@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from manim_video_gen.models.script import SceneObjectState
+from manim_video_gen.video.latex_korean import wrap_korean_text_runs
 from manim_video_gen.video.anim_timing import (
     split_transform,
     split_transform_no_prev,
@@ -19,6 +20,46 @@ _FADE_OUT_SECONDS = 0.35
 _MOVE_RE = re.compile(
     r"^(ORIGIN|UP|DOWN|LEFT|RIGHT)(\s*\*\s*([-+]?[0-9]+(?:\.[0-9]+)?))?$"
 )
+
+
+def fit_tex_mobject_lines(
+    name: str, *, max_width_expr: str = "config.frame_width - 1.2"
+) -> str:
+    """Return snippet that keeps MathTex-like mobject inside frame width."""
+    return (
+        f"if {name}.width > ({max_width_expr}):\n"
+        f"    {name}.scale_to_fit_width({max_width_expr})\n"
+    )
+
+
+def fit_text_mobject_lines(
+    name: str,
+    *,
+    max_width_expr: str = "config.frame_width - 1.2",
+    top_edge: bool = False,
+    top_buff: float = 0.5,
+) -> str:
+    """Return snippet that keeps Text mobject inside frame safely."""
+    extra = ""
+    if top_edge:
+        extra = (
+            f"{name}.to_edge(UP, buff={top_buff:.2f})\n"
+            f"if {name}.get_top()[1] > config.frame_height/2 - 0.2:\n"
+            f"    {name}.to_edge(UP, buff=0.2)\n"
+        )
+    return (
+        f"if {name}.width > ({max_width_expr}):\n"
+        f"    {name}.scale_to_fit_width({max_width_expr})\n" + extra
+    )
+
+
+def indent_lines(code: str, spaces: int = 8) -> str:
+    """Indent multiline snippet by given spaces, preserving blank lines."""
+    pad = " " * spaces
+    out: list[str] = []
+    for line in code.splitlines():
+        out.append((pad + line) if line.strip() else line)
+    return "\n".join(out) + ("\n" if code.endswith("\n") or code else "")
 
 
 def sanitize_move_to_expr(expr: str) -> str:
@@ -88,7 +129,7 @@ class EquationWriteTemplate:
         duration: float,
         prev_scene_state: list[SceneObjectState] | None = None,
     ) -> str:
-        latex = str(params.get("latex", ""))
+        latex = wrap_korean_text_runs(str(params.get("latex", "")))
         font_size = int(params.get("font_size", 48))
         color = str(params.get("color", "WHITE"))
 
@@ -98,14 +139,15 @@ class EquationWriteTemplate:
         imports = scene_imports(*all_latex)
         prev_lines = _prev_state_lines(prev_scene_state)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
 {prev_lines}        eq = MathTex({repr(latex)}, font_size={font_size}).set_color({color})
+{indent_lines(fit_tex_mobject_lines("eq"), 8)}        eq.move_to(ORIGIN)
         self.play(Write(eq), run_time={t_write:.3f})
         self.wait({t_wait:.3f})
-'''
+"""
 
 
 class EquationTransformTemplate:
@@ -118,8 +160,8 @@ class EquationTransformTemplate:
         duration: float,
         prev_scene_state: list[SceneObjectState] | None,
     ) -> str:
-        from_latex = str(params.get("from_latex", ""))
-        to_latex = str(params.get("to_latex", ""))
+        from_latex = wrap_korean_text_runs(str(params.get("from_latex", "")))
+        to_latex = wrap_korean_text_runs(str(params.get("to_latex", "")))
 
         all_latex = _collect_latex_values(params, prev_scene_state)
         imports = scene_imports(*all_latex)
@@ -127,26 +169,29 @@ class EquationTransformTemplate:
 
         if prev_scene_state:
             t_tx, t_end = split_transform(duration)
-            core = f'''{prev_lines}        eq2 = MathTex({repr(to_latex)})
+            core = f"""{prev_lines}        eq2 = MathTex({repr(to_latex)})
+{indent_lines(fit_tex_mobject_lines("eq2"), 8)}        eq2.move_to(ORIGIN)
         self.play(TransformMatchingTex(_p0, eq2), run_time={t_tx:.3f})
         self.wait({t_end:.3f})
-'''
-            return f'''{imports}
+"""
+            return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
-{core}'''
+{core}"""
 
         t_intro, t_mid, t_tx, t_end = split_transform_no_prev(duration)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
         eq1 = MathTex({repr(from_latex)})
+{indent_lines(fit_tex_mobject_lines("eq1"), 8)}        eq1.move_to(ORIGIN)
         eq2 = MathTex({repr(to_latex)})
+{indent_lines(fit_tex_mobject_lines("eq2"), 8)}        eq2.move_to(ORIGIN)
         self.play(Write(eq1), run_time={t_intro:.3f})
         self.wait({t_mid:.3f})
         self.play(TransformMatchingTex(eq1, eq2), run_time={t_tx:.3f})
         self.wait({t_end:.3f})
-'''
+"""

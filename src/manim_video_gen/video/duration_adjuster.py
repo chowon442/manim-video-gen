@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import logging
+import re
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,3 +117,55 @@ def adjust_duration_safe(code: str, target_duration: float) -> str:
     except Exception as exc:  # noqa: BLE001
         logger.warning("duration adjust failed: %s", exc)
         return code
+
+
+def ensure_scene_cleanup(code: str) -> str:
+    """Ensure Segment.construct ends with cleanup (FadeOut + clear).
+
+    This prevents lingering mobjects when rendered clips are stitched.
+    If cleanup already exists, the code is returned unchanged.
+    """
+    has_clear = "self.clear()" in code
+    has_fadeout = bool(
+        re.search(
+            r"FadeOut\(m\)\s+for\s+m\s+in\s+(?:self\.mobjects|list\(self\.mobjects\))",
+            code,
+        )
+    )
+    if has_clear and has_fadeout:
+        return code
+
+    marker = "def construct(self):"
+    idx = code.find(marker)
+    if idx < 0:
+        return code
+
+    # Find block indentation from next non-empty line
+    rest = code[idx + len(marker) :]
+    lines = rest.splitlines(keepends=True)
+    indent = "        "
+    for ln in lines:
+        if ln.strip():
+            leading = ln[: len(ln) - len(ln.lstrip(" "))]
+            if leading:
+                indent = leading
+            break
+
+    cleanup_parts: list[str] = []
+    if not has_fadeout:
+        cleanup_parts.append(
+            f"{indent}if len(self.mobjects) > 0:\n"
+            f"{indent}    self.play(*[FadeOut(m) for m in list(self.mobjects)], run_time=0.25)\n"
+        )
+    if not has_clear:
+        cleanup_parts.append(f"{indent}self.clear()\n")
+
+    if not cleanup_parts:
+        return code
+
+    cleanup = "".join(cleanup_parts)
+
+    # Append cleanup at file end (safe for current generated templates where construct is final block)
+    if code.endswith("\n"):
+        return code + cleanup
+    return code + "\n" + cleanup

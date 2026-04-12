@@ -7,6 +7,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from manim_video_gen.exceptions import CompositionError
 
@@ -45,18 +46,27 @@ class VideoComposer:
         audio_path: Path,
         output_path: Path,
         subtitle_path: Path | None = None,
+        subtitle_safe_area_px: int = 0,
     ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         video_path = Path(video_path).resolve()
         audio_path = Path(audio_path).resolve()
         output_path = Path(output_path).resolve()
+        safe_px = max(0, int(subtitle_safe_area_px))
 
         if subtitle_path is not None:
             sp = Path(subtitle_path).resolve()
             if not sp.is_file():
                 raise FileNotFoundError(f"Subtitle file not found: {sp}")
             # Use basename + cwd so Windows paths with spaces/colons work in -vf ass=
-            vf = f"ass={sp.name}"
+            if safe_px > 0:
+                vf = (
+                    f"scale=iw:ih-{safe_px}:flags=lanczos,"
+                    f"pad=iw:ih+{safe_px}:0:0:black,"
+                    f"ass={sp.name}"
+                )
+            else:
+                vf = f"ass={sp.name}"
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -84,6 +94,37 @@ class VideoComposer:
                 str(output_path),
             ]
             self._run(cmd, cwd=str(sp.parent))
+            return output_path
+
+        if safe_px > 0:
+            vf = f"scale=iw:ih-{safe_px}:flags=lanczos,pad=iw:ih+{safe_px}:0:0:black"
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-i",
+                str(audio_path),
+                "-vf",
+                vf,
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(output_path),
+            ]
+            self._run(cmd)
             return output_path
 
         cmd = [
@@ -200,9 +241,47 @@ class VideoComposer:
             list_path.unlink(missing_ok=True)
         return output_path
 
+    def generate_silence_audio(self, *, duration: float, output_path: Path) -> Path:
+        """Generate silent AAC audio for bridge clips."""
+        output_path = Path(output_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        dur = max(0.05, float(duration))
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=48000:cl=stereo",
+            "-t",
+            f"{dur:.3f}",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            str(output_path),
+        ]
+        self._run(cmd)
+        return output_path
+
     def compose_final(self, merged_paths: list[Path], output_path: Path) -> Path:
         """세그먼트별 병합 파일들을 받아 crossfade를 적용하며 최종 영상을 생성한다."""
         return self.concat_segments(merged_paths, output_path)
+
+    def compose_final_with_bridges(
+        self,
+        merged_paths: list[Path],
+        output_path: Path,
+        *,
+        bridge_specs: list[dict[str, Any]] | None = None,
+    ) -> Path:
+        """Compose final video with optional semantic bridge transitions.
+
+        Current safe implementation attempts bridge specs in caller,
+        but always falls back to standard concat in this method.
+        """
+        _ = bridge_specs
+        return self.compose_final(merged_paths, output_path)
 
     def concat_segments(self, segment_paths: list[Path], output_path: Path) -> Path:
         if not segment_paths:
@@ -307,9 +386,7 @@ class VideoComposer:
                 f"[{v_label}][{i}:v]xfade=transition=fade:duration={crossfade}:"
                 f"offset={offset}[{out_v}]"
             )
-            filter_parts.append(
-                f"[{a_label}][{i}:a]acrossfade=d={crossfade}[{out_a}]"
-            )
+            filter_parts.append(f"[{a_label}][{i}:a]acrossfade=d={crossfade}[{out_a}]")
             v_label = out_v
             a_label = out_a
             run_len = run_len + float(durs[i]) - crossfade

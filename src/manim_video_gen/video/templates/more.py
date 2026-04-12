@@ -13,9 +13,16 @@ from manim_video_gen.video.anim_timing import (
     split_n_writes,
     split_write,
 )
+from manim_video_gen.video.latex_korean import (
+    sanitize_latex_for_text_label,
+    wrap_korean_text_runs,
+)
 from manim_video_gen.video.templates.equation import (
     _FADE_OUT_SECONDS,
     _collect_latex_values,
+    indent_lines,
+    fit_text_mobject_lines,
+    fit_tex_mobject_lines,
     _prev_state_lines,
 )
 from manim_video_gen.video.tex_template import has_cjk, scene_imports
@@ -59,7 +66,9 @@ def _direction_const(name: str) -> str:
     return u if u in ("UP", "DOWN", "LEFT", "RIGHT") else "UP"
 
 
-def _inject_braces_for_annotations(latex: str, annotations: list[dict[str, Any]]) -> str:
+def _inject_braces_for_annotations(
+    latex: str, annotations: list[dict[str, Any]]
+) -> str:
     """Wrap each target_tex in {{ }} for Brace / get_part_by_tex (first occurrence)."""
     out = latex
     for ann in annotations:
@@ -87,7 +96,11 @@ class EquationStepsTemplate:
         prev_scene_state: list[SceneObjectState] | None = None,
     ) -> str:
         raw_steps = params.get("steps") or []
-        steps = [str(s) for s in raw_steps] if isinstance(raw_steps, list) else []
+        steps = (
+            [wrap_korean_text_runs(str(s)) for s in raw_steps]
+            if isinstance(raw_steps, list)
+            else []
+        )
         if not steps:
             steps = [r"0 = 0"]
 
@@ -102,21 +115,27 @@ class EquationStepsTemplate:
         all_latex = list(steps)
         if prev_scene_state:
             all_latex.extend(st.latex for st in prev_scene_state)
-        imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
+        imports = (
+            scene_imports(*all_latex)
+            if all_latex
+            else "from manim import *\nimport numpy as np"
+        )
         prev_lines = _prev_state_lines(prev_scene_state)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
 {prev_lines}        group = VGroup(
             {tex_lines}
         ).arrange({arrange_mob}, buff={buff})
+        for _m in group:
+{indent_lines(fit_tex_mobject_lines("_m"), 12)}        group.arrange({arrange_mob}, buff={buff})
         group.move_to(ORIGIN)
         for i, mob in enumerate(group):
             self.play(Write(mob), run_time={t_each:.3f})
         self.wait({t_wait:.3f})
-'''
+"""
 
 
 def _parse_derivation_steps(params: dict[str, Any]) -> list[tuple[str, str]]:
@@ -126,12 +145,12 @@ def _parse_derivation_steps(params: dict[str, Any]) -> list[tuple[str, str]]:
         if isinstance(item, dict):
             out.append(
                 (
-                    str(item.get("latex", r"0=0")),
+                    wrap_korean_text_runs(str(item.get("latex", r"0=0"))),
                     str(item.get("annotation", "") or ""),
                 )
             )
         elif isinstance(item, str):
-            out.append((item, ""))
+            out.append((wrap_korean_text_runs(item), ""))
     if not out:
         out = [(r"0=0", "")]
     return out
@@ -147,7 +166,9 @@ def _derivation_segment_times(
     if n <= 0:
         n = 1
     trans = max(n - 1, 0)
-    plays = 1 + sum(2 + (1 if (j < len(has_ann) and has_ann[j]) else 0) for j in range(trans))
+    plays = 1 + sum(
+        2 + (1 if (j < len(has_ann) and has_ann[j]) else 0) for j in range(trans)
+    )
     share = d / max(plays, 1)
     t0 = min(1.2, max(0.3, share))
     per_trans: list[tuple[float, float, float]] = []
@@ -196,15 +217,16 @@ class EquationDerivationTemplate:
         first_latex = parsed[0][0]
         lines.append(
             f"        cur = MathTex({repr(first_latex)})\n"
-            f"        cur.to_edge(UP, buff=0.55)\n"
-            f"        self.play(Write(cur), run_time={t0:.3f})\n"
+            + indent_lines(fit_tex_mobject_lines("cur"), 8)
+            + f"        cur.to_edge(UP, buff=0.55)\n"
+            + f"        self.play(Write(cur), run_time={t0:.3f})\n"
         )
         for idx in range(1, n):
             latex_i, ann = parsed[idx]
             ta, ann_t, tw = per_trans[idx - 1]
             arr_name = f"arr_{idx}"
             lines.append(
-                f"        {arr_name} = MathTex(r\"\\Downarrow\", font_size=38)\n"
+                f'        {arr_name} = MathTex(r"\\Downarrow", font_size=38)\n'
                 f"        {arr_name}.next_to(cur, DOWN, buff={ANIM_GAP:.2f})\n"
                 f"        self.play(FadeIn({arr_name}), run_time={ta:.3f})\n"
             )
@@ -218,18 +240,19 @@ class EquationDerivationTemplate:
             eq_name = f"eq_{idx}"
             lines.append(
                 f"        {eq_name} = MathTex({repr(latex_i)})\n"
-                f"        {eq_name}.next_to({arr_name}, DOWN, buff={ANIM_GAP + 0.1:.2f})\n"
-                f"        self.play(Write({eq_name}), run_time={tw:.3f})\n"
-                f"        cur = {eq_name}\n"
+                + indent_lines(fit_tex_mobject_lines(eq_name), 8)
+                + f"        {eq_name}.next_to({arr_name}, DOWN, buff={ANIM_GAP + 0.1:.2f})\n"
+                + f"        self.play(Write({eq_name}), run_time={tw:.3f})\n"
+                + f"        cur = {eq_name}\n"
             )
 
         body = "".join(lines)
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
 {prev_lines}{body}        self.wait({t_end:.3f})
-'''
+"""
 
 
 class NumberLinePlotTemplate:
@@ -280,7 +303,11 @@ class NumberLinePlotTemplate:
         for _v, lbl, _c in points:
             if lbl.strip() and not has_cjk(lbl):
                 label_tex.append(lbl)
-        imports = scene_imports(*label_tex) if label_tex else "from manim import *\nimport numpy as np"
+        imports = (
+            scene_imports(*label_tex)
+            if label_tex
+            else "from manim import *\nimport numpy as np"
+        )
         prev_lines = _prev_state_lines(prev_scene_state)
 
         n_plays = 1 + len(regions) + len(points)
@@ -308,24 +335,37 @@ class NumberLinePlotTemplate:
                     f"        self.play(FadeIn(dot_{j}), run_time={t_each:.3f})\n"
                 )
                 continue
-            if has_cjk(lbl):
-                body.append(
-                    f"        lbl_{j} = Text({repr(lbl)}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
-                    f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
-                )
+                if has_cjk(lbl):
+                    plain_lbl = sanitize_latex_for_text_label(lbl)
+                    body.append(
+                        f"        lbl_{j} = Text({repr(plain_lbl)}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
+                        + indent_lines(
+                            fit_text_mobject_lines(
+                                f"lbl_{j}", max_width_expr="config.frame_width * 0.45"
+                            ),
+                            8,
+                        )
+                        + f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+                    )
             else:
                 body.append(
                     f"        lbl_{j} = MathTex({repr(lbl)}, font_size=30).next_to(dot_{j}, UP, buff=0.14)\n"
-                    f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+                    + indent_lines(
+                        fit_tex_mobject_lines(
+                            f"lbl_{j}", max_width_expr="config.frame_width * 0.45"
+                        ),
+                        8,
+                    )
+                    + f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
                 )
 
         body.append(f"        self.wait({t_wait:.3f})\n")
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
-{prev_lines}{"".join(body)}'''
+{prev_lines}{"".join(body)}"""
 
 
 class AnnotatedEquationTemplate:
@@ -340,7 +380,7 @@ class AnnotatedEquationTemplate:
         duration: float,
         prev_scene_state: list[SceneObjectState] | None = None,
     ) -> str:
-        raw_latex = str(params.get("latex", r"0=0"))
+        raw_latex = wrap_korean_text_runs(str(params.get("latex", r"0=0")))
         ann_raw = params.get("annotations") or []
         annotations = [a for a in ann_raw if isinstance(a, dict)]
         braced = _inject_braces_for_annotations(raw_latex, annotations)
@@ -348,22 +388,23 @@ class AnnotatedEquationTemplate:
         all_latex = [braced]
         if prev_scene_state:
             all_latex.extend(st.latex for st in prev_scene_state)
-        imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
+        imports = (
+            scene_imports(*all_latex)
+            if all_latex
+            else "from manim import *\nimport numpy as np"
+        )
         prev_lines = _prev_state_lines(prev_scene_state)
 
         n_ann = len([a for a in annotations if str(a.get("target_tex", "")).strip()])
         t_w, t_rest = split_write(float(duration) * 0.38)
         budget = max(0.01, float(duration) - t_w - 0.12)
-        t_br = (
-            min(0.85, max(0.22, budget / max(n_ann * 2, 1)))
-            if n_ann
-            else 0.0
-        )
+        t_br = min(0.85, max(0.22, budget / max(n_ann * 2, 1))) if n_ann else 0.0
         used = t_w + t_br * 2 * n_ann
         t_end = max(0.12, float(duration) - used)
 
         lines: list[str] = [
             f"        eq = MathTex({repr(braced)}, font_size=44)\n",
+            indent_lines(fit_tex_mobject_lines("eq"), 8),
             f"        self.play(Write(eq), run_time={t_w:.3f})\n",
         ]
         idx = 0
@@ -381,8 +422,14 @@ class AnnotatedEquationTemplate:
             if txt:
                 lines.append(
                     f"        tx_{idx} = Text({repr(txt)}, font_size=22)\n"
-                    f"        tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
-                    f"        self.play(GrowFromCenter({bi}), FadeIn(tx_{idx}), run_time={t_br:.3f})\n"
+                    + f"        tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
+                    + indent_lines(
+                        fit_text_mobject_lines(
+                            f"tx_{idx}", max_width_expr="config.frame_width * 0.5"
+                        ),
+                        8,
+                    )
+                    + f"        self.play(GrowFromCenter({bi}), FadeIn(tx_{idx}), run_time={t_br:.3f})\n"
                 )
             else:
                 lines.append(
@@ -392,11 +439,11 @@ class AnnotatedEquationTemplate:
 
         lines.append(f"        self.wait({t_end:.3f})\n")
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
-{prev_lines}{"".join(lines)}'''
+{prev_lines}{"".join(lines)}"""
 
 
 class GraphPlotTemplate:
@@ -409,6 +456,7 @@ class GraphPlotTemplate:
         duration: float,
         prev_scene_state: list[SceneObjectState] | None = None,
     ) -> str:
+        params = dict(params)
         func_python = str(params.get("func_python", "lambda x: x**2")).strip()
         if not func_python.startswith("lambda"):
             func_python = f"lambda x: ({func_python})"
@@ -419,16 +467,51 @@ class GraphPlotTemplate:
         y_len = float(params.get("y_length", 4))
         color = str(params.get("color", "BLUE"))
         func_latex = params.get("func_latex")
+        points_raw = params.get("points") or []
+        points: list[tuple[float, float, str, str]] = []
+        for p in points_raw:
+            if not isinstance(p, dict):
+                continue
+            points.append(
+                (
+                    float(p.get("x", 0.0)),
+                    float(p.get("y", 0.0)),
+                    _safe_manim_color(str(p.get("color", "RED")), "RED"),
+                    str(p.get("label", "") or ""),
+                )
+            )
+
+        extrema = params.get("extrema_points") or []
+        for p in extrema:
+            if not isinstance(p, dict):
+                continue
+            points.append(
+                (
+                    float(p.get("x", 0.0)),
+                    float(p.get("y", 0.0)),
+                    _safe_manim_color(str(p.get("color", "RED")), "RED"),
+                    str(p.get("label", "") or ""),
+                )
+            )
         label_line = ""
         if func_latex and str(func_latex).strip():
             label_line = (
                 f"        label = MathTex({repr(str(func_latex))}, font_size=36).to_corner(UL)\n"
-                "        self.play(Write(label), run_time=0.4)\n"
+                + indent_lines(
+                    fit_tex_mobject_lines(
+                        "label", max_width_expr="config.frame_width * 0.6"
+                    ),
+                    8,
+                )
+                + "        self.play(Write(label), run_time=0.4)\n"
             )
 
         latex_vals: list[str] = []
         if func_latex:
             latex_vals.append(str(func_latex))
+        for _x, _y, _pc, pl in points:
+            if pl.strip() and not has_cjk(pl):
+                latex_vals.append(pl)
         imports = scene_imports(*latex_vals)
         prev_lines = _prev_state_lines(prev_scene_state)
 
@@ -438,8 +521,43 @@ class GraphPlotTemplate:
             has_label_line=bool(func_latex and str(func_latex).strip()),
             fade_out=fade_out,
         )
+        t_point = min(ANIM_CAP_FADE + 0.15, max(0.2, float(duration) * 0.12))
 
-        return f'''{imports}
+        point_lines = ""
+        for i, (x, y, p_color, p_label) in enumerate(points):
+            if p_label.strip():
+                if has_cjk(p_label):
+                    plain_label = sanitize_latex_for_text_label(p_label)
+                    point_lines += (
+                        f"        p_{i} = Dot(axes.c2p({x}, {y}), color={p_color}, radius=0.08)\n"
+                        f"        p_{i}_lbl = Text({repr(plain_label)}, font_size=24).next_to(p_{i}, UP, buff=0.14)\n"
+                        + indent_lines(
+                            fit_text_mobject_lines(
+                                f"p_{i}_lbl", max_width_expr="config.frame_width * 0.45"
+                            ),
+                            8,
+                        )
+                        + f"        self.play(FadeIn(p_{i}), FadeIn(p_{i}_lbl), run_time={t_point:.3f})\n"
+                    )
+                else:
+                    point_lines += (
+                        f"        p_{i} = Dot(axes.c2p({x}, {y}), color={p_color}, radius=0.08)\n"
+                        f"        p_{i}_lbl = MathTex({repr(p_label)}, font_size=30).next_to(p_{i}, UP, buff=0.12)\n"
+                        + indent_lines(
+                            fit_tex_mobject_lines(
+                                f"p_{i}_lbl", max_width_expr="config.frame_width * 0.45"
+                            ),
+                            8,
+                        )
+                        + f"        self.play(FadeIn(p_{i}), FadeIn(p_{i}_lbl), run_time={t_point:.3f})\n"
+                    )
+            else:
+                point_lines += (
+                    f"        p_{i} = Dot(axes.c2p({x}, {y}), color={p_color}, radius=0.08)\n"
+                    f"        self.play(FadeIn(p_{i}), run_time={t_point:.3f})\n"
+                )
+
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
@@ -453,9 +571,9 @@ class Segment(Scene):
         self.play(Create(axes), run_time={t_axes:.3f})
         graph = axes.plot({func_python}, color={color})
         self.play(Create(graph), run_time={t_plot:.3f})
-{label_line}        self.wait({t_end:.3f})
+{label_line}{point_lines}        self.wait({t_end:.3f})
         self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
-'''
+"""
 
 
 class HighlightResultTemplate:
@@ -468,25 +586,30 @@ class HighlightResultTemplate:
         duration: float,
         prev_scene_state: list[SceneObjectState] | None = None,
     ) -> str:
-        latex = str(params.get("latex", "x = -1"))
+        latex = wrap_korean_text_runs(str(params.get("latex", "x = -1")))
         box_color = str(params.get("box_color", "YELLOW"))
         all_latex = _collect_latex_values({"latex": latex}, prev_scene_state)
-        imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
+        imports = (
+            scene_imports(*all_latex)
+            if all_latex
+            else "from manim import *\nimport numpy as np"
+        )
         prev_lines = _prev_state_lines(prev_scene_state)
 
         t_in, t_box, t_hold, t_out = split_highlight_box(duration)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
 {prev_lines}        eq = MathTex({repr(latex)})
+{indent_lines(fit_tex_mobject_lines("eq"), 8)}        eq.move_to(ORIGIN)
         box = SurroundingRectangle(eq, color={box_color}, buff=0.15)
         self.play(Write(eq), run_time={t_in:.3f})
         self.play(Create(box), run_time={t_box:.3f})
         self.wait({t_hold:.3f})
         self.play(FadeOut(box), run_time={min(t_out, ANIM_CAP_FADE):.3f})
-'''
+"""
 
 
 class TitleCardTemplate:
@@ -512,19 +635,21 @@ class TitleCardTemplate:
         if subtitle.strip():
             sub_block = (
                 f"        st = Text({repr(subtitle)}, font_size=36)\n"
-                f"        st.next_to(tt, DOWN, buff=0.4)\n"
-                f"        self.play(FadeIn(st, shift=UP*0.1), run_time={t2:.3f})\n"
+                + f"        st.next_to(tt, DOWN, buff=0.4)\n"
+                + indent_lines(fit_text_mobject_lines("st"), 8)
+                + f"        self.play(FadeIn(st, shift=UP*0.1), run_time={t2:.3f})\n"
             )
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
         tt = Text({repr(title)}, font_size=48)
+{indent_lines(fit_text_mobject_lines("tt", top_edge=True, top_buff=0.5), 8)}        tt.to_edge(UP, buff=0.5)
         self.play(FadeIn(tt, shift=DOWN*0.15), run_time={t1:.3f})
 {sub_block}        self.wait({t_end:.3f})
         self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
-'''
+"""
 
 
 class IntroProblemTemplate:
@@ -546,18 +671,19 @@ class IntroProblemTemplate:
         t2 = min(1.15, max(0.35, duration * 0.42))
         t_end = max(0.12, duration - t1 - t2 - fade_out)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
         head = Text({repr(label)}, font_size=40)
-        head.to_edge(UP, buff=0.4)
+{indent_lines(fit_text_mobject_lines("head", top_edge=True, top_buff=0.4), 8)}        head.to_edge(UP, buff=0.4)
         body = Text({repr(problem_text)}, font_size=32).next_to(head, DOWN, buff=0.5)
+{indent_lines(fit_text_mobject_lines("body", top_edge=True, top_buff=1.2), 8)}        body.to_edge(UP, buff=1.2)
         self.play(FadeIn(head), run_time={t1:.3f})
         self.play(FadeIn(body, shift=UP*0.1), run_time={t2:.3f})
         self.wait({t_end:.3f})
         self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
-'''
+"""
 
 
 class OutroSummaryTemplate:
@@ -573,6 +699,12 @@ class OutroSummaryTemplate:
         summary = str(params.get("summary_text", ""))
         imports = _text_imports("정리", summary)
         extra_latex = params.get("highlight_latex")
+        summary_lines = [ln.strip() for ln in summary.splitlines() if ln.strip()]
+        if not summary_lines:
+            summary_lines = [summary.strip() or "정리"]
+        text_items = ",\n            ".join(
+            f"Text({repr(line)}, font_size=34)" for line in summary_lines
+        )
 
         fade_out = _FADE_OUT_SECONDS
         t1 = min(0.85, max(0.3, duration * 0.22))
@@ -581,21 +713,25 @@ class OutroSummaryTemplate:
 
         eq_block = ""
         if extra_latex and str(extra_latex).strip():
-            latex_s = str(extra_latex)
+            latex_s = wrap_korean_text_runs(str(extra_latex))
             imports = scene_imports(latex_s)
             eq_block = (
                 f"        eq = MathTex({repr(latex_s)})\n"
-                f"        eq.next_to(tx, DOWN, buff=0.45)\n"
-                f"        self.play(Write(eq), run_time={t2 * 0.55:.3f})\n"
+                + indent_lines(fit_tex_mobject_lines("eq"), 8)
+                + f"        eq.next_to(summary_group, DOWN, buff=0.45)\n"
+                + f"        self.play(Write(eq), run_time={t2 * 0.55:.3f})\n"
             )
             t_end = max(0.12, duration - t1 - t2 * 1.55 - fade_out)
 
-        return f'''{imports}
+        return f"""{imports}
 
 class Segment(Scene):
     def construct(self):
-        tx = Text({repr(summary)}, font_size=36)
-        self.play(FadeIn(tx), run_time={t1:.3f})
+        summary_group = VGroup(
+            {text_items}
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.32)
+{indent_lines(fit_text_mobject_lines("summary_group", top_edge=True, top_buff=0.6), 8)}        summary_group.to_edge(UP, buff=0.6)
+        self.play(FadeIn(summary_group), run_time={t1:.3f})
 {eq_block}        self.wait({t_end:.3f})
         self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
-'''
+"""

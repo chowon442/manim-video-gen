@@ -131,5 +131,5 @@ PI ≈ 3.14159,  TAU = 2*PI,  DEGREES = PI/180
 - Avoid os / sys / subprocess / open / socket imports
 - Keep total animation time close to the requested duration_seconds
 - MathTex/Tex raw strings: LaTeX needs one backslash per command. Correct: MathTex(r'\\frac{a}{b}'); wrong: MathTex(r'\\\\frac{a}{b}') (double backslash before frac/sqrt/pm breaks latex).
-- NEVER put Korean/CJK inside MathTex or Tex (e.g. no \\text{또는}); pdfLaTeX cannot typeset it. Use \\text{or} or \\quad only; Korean belongs in narration or separate Text().
+- Avoid Korean/CJK inside MathTex/Tex when possible; prefer separate Text() labels. If unavoidable, use xelatex+xeCJK template and wrap Korean phrase in \\text{...} so spaces are preserved.
 """

@@ -58,9 +58,8 @@ def group_into_chains(
             )
 
     for ch in chains:
-        ch.is_equation_chain = (
-            len(ch.segments) >= 2
-            and all(_is_equation_segment(s) for s in ch.segments)
+        ch.is_equation_chain = len(ch.segments) >= 2 and all(
+            _is_equation_segment(s) for s in ch.segments
         )
 
     return chains

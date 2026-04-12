@@ -47,7 +47,11 @@ class Segment(BaseModel):
     @property
     def effective_tts_text(self) -> str:
         """Return tts_text if available, otherwise fall back to narration."""
-        return self.tts_text.strip() if self.tts_text and self.tts_text.strip() else self.narration
+        return (
+            self.tts_text.strip()
+            if self.tts_text and self.tts_text.strip()
+            else self.narration
+        )
 
 
 class VideoScript(BaseModel):

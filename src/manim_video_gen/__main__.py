@@ -1,4 +1,4 @@
-"""CLI: python -m manim_video_gen \"문제 텍스트\""""
+"""CLI: python -m manim_video_gen \"문제 텍스트\" """
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from manim_video_gen.config import project_root
+from manim_video_gen.config import get_settings, project_root
 from manim_video_gen.pipeline.orchestrator import generate_video
 
 
@@ -31,12 +31,14 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     async def _run() -> None:
-        final_path, workspace = await generate_video(args.problem)
+        settings = get_settings()
+        final_path, workspace = await generate_video(args.problem, settings=settings)
         try:
             shutil.copy2(final_path, out)
             print(f"Wrote: {out.resolve()}")
         finally:
-            workspace.cleanup()
+            if not settings.keep_workspace:
+                workspace.cleanup()
 
     try:
         asyncio.run(_run())

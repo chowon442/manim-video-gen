@@ -1,6 +1,7 @@
 """Tests for NumberLinePlotTemplate and AnnotatedEquationTemplate."""
 
 from manim_video_gen.models.solution import SolutionPlan, SolutionStep
+from manim_video_gen.models.script import Segment
 from manim_video_gen.video.templates.more import (
     AnnotatedEquationTemplate,
     NumberLinePlotTemplate,
@@ -25,6 +26,74 @@ def test_number_line_template_compiles():
     assert "NumberLine" in code
     assert "Line(nl.n2p" in code
     compile(code, "<nl>", "exec")
+
+
+def test_graph_plot_template_supports_points():
+    seg = Segment(
+        id=0,
+        narration="그래프에서 점을 표시합니다",
+        tts_text="그래프에서 점을 표시합니다",
+        visual_description="desc",
+        visual_type="graph_plot",
+        visual_params={
+            "func_python": "lambda x: x**2",
+            "x_range": [-3, 3, 1],
+            "y_range": [-1, 9, 1],
+            "points": [{"x": 1, "y": 1, "color": "RED", "label": "극소"}],
+        },
+        prev_scene_state=None,
+    )
+    code = TemplateRegistry().render_code_for_segment(
+        segment=seg,
+        duration=5.0,
+    )
+    assert "Dot(axes.c2p" in code
+    compile(code, "<graph_points>", "exec")
+
+
+def test_graph_plot_cjk_label_uses_sanitized_text_label():
+    seg = Segment(
+        id=0,
+        narration="그래프에서 점을 표시합니다",
+        tts_text="그래프에서 점을 표시합니다",
+        visual_description="desc",
+        visual_type="graph_plot",
+        visual_params={
+            "func_python": "lambda x: x**2",
+            "x_range": [-3, 3, 1],
+            "y_range": [-1, 9, 1],
+            "points": [
+                {"x": -3, "y": 12, "color": "RED", "label": r"(-3,\\,12)\\text{ 극대}"}
+            ],
+        },
+        prev_scene_state=None,
+    )
+    code = TemplateRegistry().render_code_for_segment(
+        segment=seg,
+        duration=5.0,
+    )
+    assert "Text('(-3, 12) 극대'" in code
+    compile(code, "<graph_points_cjk>", "exec")
+
+
+def test_equation_steps_template_compiles_after_fit_guard_injection():
+    seg = Segment(
+        id=11,
+        narration="단계를 보여줍니다",
+        tts_text="단계를 보여줍니다",
+        visual_description="desc",
+        visual_type="equation_steps",
+        visual_params={
+            "steps": [
+                r"f(-3) = -27 + 54 - 27 + 12 = 12",
+                r"f(-1) = -1 + 6 - 9 + 12 = 8",
+            ],
+            "arrange_direction": "DOWN",
+        },
+        prev_scene_state=None,
+    )
+    code = TemplateRegistry().render_code_for_segment(seg, duration=6.0)
+    compile(code, "<eq_steps_fit>", "exec")
 
 
 def test_annotated_equation_template_compiles():

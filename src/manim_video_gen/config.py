@@ -69,6 +69,11 @@ class Settings(BaseSettings):
         default=0.4,
         validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
     )
+    scene_bridge_enabled: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED",
+        description="Enable semantic bridge transition generation between adjacent rendered chains/scenes.",
+    )
 
     tts_provider: Literal["elevenlabs", "azure", "replicate"] = Field(
         default="elevenlabs",
@@ -131,6 +136,64 @@ class Settings(BaseSettings):
     burn_subtitles: bool = Field(
         default=True,
         validation_alias="MANIM_VIDEO_GEN_BURN_SUBTITLES",
+    )
+
+    subtitle_max_chars: int = Field(
+        default=56,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_MAX_CHARS",
+    )
+    subtitle_wrap_mode: Literal["auto", "char"] = Field(
+        default="auto",
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_WRAP_MODE",
+        description="Subtitle line-wrapping mode. auto lets ASS renderer wrap by width, char inserts manual \\N by character count.",
+    )
+    subtitle_font_size: int = Field(
+        default=42,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_FONT_SIZE",
+    )
+    subtitle_margin_l: int = Field(
+        default=56,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_MARGIN_L",
+    )
+    subtitle_margin_r: int = Field(
+        default=56,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_MARGIN_R",
+    )
+    subtitle_margin_v: int = Field(
+        default=44,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_MARGIN_V",
+    )
+    subtitle_safe_area_px: int = Field(
+        default=0,
+        validation_alias="MANIM_VIDEO_GEN_SUBTITLE_SAFE_AREA_PX",
+        description=(
+            "Reserve bottom area for subtitles by shrinking video vertically and padding black bar. "
+            "0 disables this behavior."
+        ),
+    )
+
+    consistency_mode: Literal["off", "warn", "error"] = Field(
+        default="warn",
+        validation_alias="MANIM_VIDEO_GEN_CONSISTENCY_MODE",
+    )
+    consistency_auto_repair: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR",
+        description="When consistency_mode=error, try script-level auto-repair loop before failing.",
+    )
+    consistency_auto_repair_max_attempts: int = Field(
+        default=2,
+        validation_alias="MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR_MAX_ATTEMPTS",
+        description="Maximum additional scriptify attempts for consistency auto-repair.",
+    )
+
+    diagnostic_dump: bool = Field(
+        default=False,
+        validation_alias="MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP",
+    )
+    keep_workspace: bool = Field(
+        default=False,
+        validation_alias="MANIM_VIDEO_GEN_KEEP_WORKSPACE",
     )
 
     video_width: int = Field(

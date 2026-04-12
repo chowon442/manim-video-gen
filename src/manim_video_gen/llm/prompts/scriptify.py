@@ -79,7 +79,9 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
    - Screen: coordinate axes and a function graph.
    - narration MUST mention the graph / curve / shape (e.g. 포물선) — do NOT use this type if you only show equations.
    - visual_params: func_python (string, MUST be a single Python lambda like "lambda x: x**2"), x_range ([min,max,step]), y_range ([min,max,step]),
-     x_length (optional number, default 6), y_length (optional number, default 4), color (optional, default BLUE), func_latex (optional label string).
+     x_length (optional number, default 6), y_length (optional number, default 4), color (optional, default BLUE), func_latex (optional label string),
+     points (optional array of {x:number, y:number, color:string, label:string}) and/or extrema_points (same shape).
+   - If narration mentions "점", "극대", "극소", "교점" you MUST provide points or extrema_points.
 
 6) highlight_result
    - Screen: one equation with a surrounding rectangle emphasis.
@@ -134,6 +136,7 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
 - Do NOT describe operation A (e.g. "양변에 3을 곱하면") while visual_params show a different operation (e.g. factoring).
 - If you use deictics ("이 식", "여기서", "위 식"), the referred equation MUST appear in visual_params or prev_scene_state.
 - visual_description should be a concise director note in Korean that matches narration and params (not contradictory).
+- If visual_type is graph_plot and narration mentions extrema/intersections/marked points, visual_params must include points/extrema_points explicitly.
 
 ## Good vs bad examples
 
@@ -155,6 +158,7 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
 LaTeX rules:
 - Prefer ASCII-only LaTeX in MathTex. Korean inside LaTeX only inside \\text{} if absolutely needed; prefer \\Rightarrow over Korean words in LaTeX.
 - Do NOT place raw Korean in math mode without \\text{}.
+- If Korean phrase needs spaces to be visible, prefer Text() labels or wrap phrase with \\text{...}.
 
 ## Scene continuity and transitions (CRITICAL — viewers must feel ONE continuous video)
 

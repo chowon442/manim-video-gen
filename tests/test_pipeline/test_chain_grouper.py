@@ -50,7 +50,12 @@ def test_single_segment_standalone():
 def test_equation_chain_two_with_prev_state():
     prev = [SceneObjectState(latex=r"x^2", position_expr="ORIGIN")]
     s0 = _seg(0, "equation_write", params={"latex": r"x^2+1"})
-    s1 = _seg(1, "equation_transform", prev=prev, params={"from_latex": r"x^2", "to_latex": r"x^2+1"})
+    s1 = _seg(
+        1,
+        "equation_transform",
+        prev=prev,
+        params={"from_latex": r"x^2", "to_latex": r"x^2+1"},
+    )
     chains = group_into_chains([s0, s1], [_tts(2.0), _tts(3.0)])
     assert len(chains) == 1
     assert len(chains[0].segments) == 2
@@ -85,7 +90,16 @@ def test_equation_types_constant():
 def test_equation_derivation_chains_with_prev():
     prev = [SceneObjectState(latex=r"a", position_expr="ORIGIN")]
     s0 = _seg(0, "equation_write", params={"latex": r"x"})
-    s1 = _seg(1, "equation_derivation", prev=prev, params={"steps": [{"latex": r"1=1"}]})
+    s1 = _seg(
+        1, "equation_derivation", prev=prev, params={"steps": [{"latex": r"1=1"}]}
+    )
     chains = group_into_chains([s0, s1], [_tts(1.0), _tts(2.0)])
     assert len(chains) == 1
     assert chains[0].is_equation_chain is True
+
+
+def test_group_into_chains_no_bridge_fields_required():
+    s = _seg(0, "equation_write", params={"latex": r"x"})
+    chains = group_into_chains([s], [_tts(1.0)])
+    assert len(chains) == 1
+    assert hasattr(chains[0], "is_equation_chain")

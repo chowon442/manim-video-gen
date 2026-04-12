@@ -12,6 +12,7 @@ from manim_video_gen.video.anim_timing import (
     split_transform_no_prev,
     split_write,
 )
+from manim_video_gen.video.latex_korean import wrap_korean_text_runs
 from manim_video_gen.video.templates.equation import _collect_latex_values
 from manim_video_gen.video.templates.more import (
     _derivation_segment_times,
@@ -44,7 +45,7 @@ def _snippet_equation_write(
     var_name: str,
 ) -> tuple[str, str]:
     params = seg.visual_params
-    latex = str(params.get("latex", ""))
+    latex = wrap_korean_text_runs(str(params.get("latex", "")))
     font_size = int(params.get("font_size", 48))
     color = str(params.get("color", "WHITE"))
     t_anim, t_wait = split_write(duration)
@@ -69,8 +70,8 @@ def _snippet_equation_transform(
     var_name: str,
 ) -> tuple[str, str]:
     params = seg.visual_params
-    from_latex = str(params.get("from_latex", ""))
-    to_latex = str(params.get("to_latex", ""))
+    from_latex = wrap_korean_text_runs(str(params.get("from_latex", "")))
+    to_latex = wrap_korean_text_runs(str(params.get("to_latex", "")))
 
     if prev_var is not None:
         t_tx, t_end = split_transform(duration)
@@ -98,7 +99,11 @@ def _snippet_equation_steps(
     grp_name: str,
 ) -> tuple[str, str]:
     raw_steps = seg.visual_params.get("steps") or []
-    steps = [str(s) for s in raw_steps] if isinstance(raw_steps, list) else []
+    steps = (
+        [wrap_korean_text_runs(str(s)) for s in raw_steps]
+        if isinstance(raw_steps, list)
+        else []
+    )
     if not steps:
         steps = [r"0 = 0"]
 
@@ -123,8 +128,9 @@ def _snippet_equation_steps(
         for _mob in {grp_name}:
             self.play(Write(_mob), run_time={t_each:.3f})
         self.wait({t_wait:.3f})
+        active = VGroup(*list(self.mobjects))
 """
-    return block, grp_name
+    return block, "active"
 
 
 def _snippet_equation_derivation(
@@ -142,7 +148,9 @@ def _snippet_equation_derivation(
 
     prev_fade = ""
     if prev_var:
-        prev_fade = f"        self.play(FadeOut({prev_var}), run_time={fade_cost:.3f})\n"
+        prev_fade = (
+            f"        self.play(FadeOut({prev_var}), run_time={fade_cost:.3f})\n"
+        )
 
     lines: list[str] = [prev_fade]
     first_latex = parsed[0][0]
@@ -156,7 +164,7 @@ def _snippet_equation_derivation(
         ta, ann_t, tw = per_trans[idx - 1]
         arr_name = f"arr_{idx}"
         lines.append(
-            f"        {arr_name} = MathTex(r\"\\Downarrow\", font_size=38)\n"
+            f'        {arr_name} = MathTex(r"\\Downarrow", font_size=38)\n'
             f"        {arr_name}.next_to(cur, DOWN, buff={ANIM_GAP:.2f})\n"
             f"        self.play(FadeIn({arr_name}), run_time={ta:.3f})\n"
         )
@@ -175,7 +183,8 @@ def _snippet_equation_derivation(
             f"        cur = {eq_name}\n"
         )
     lines.append(f"        self.wait({t_end:.3f})\n")
-    return "".join(lines), "cur"
+    lines.append("        active = VGroup(*list(self.mobjects))\n")
+    return "".join(lines), "active"
 
 
 def _snippet_highlight_result(
@@ -187,25 +196,11 @@ def _snippet_highlight_result(
     idx: int,
 ) -> tuple[str, str, str | None]:
     params = seg.visual_params
-    latex = str(params.get("latex", "x = -1"))
+    latex = wrap_korean_text_runs(str(params.get("latex", "x = -1")))
     box_color = str(params.get("box_color", "YELLOW"))
     box_var = f"box_{idx}"
 
     t_in, t_box, t_hold, t_out = split_highlight_box(duration)
-
-    same = (
-        prev_var is not None
-        and active_latex is not None
-        and _norm_latex(latex) == _norm_latex(active_latex)
-    )
-
-    if same:
-        block = f"""        {box_var} = SurroundingRectangle({prev_var}, color={box_color}, buff=0.15)
-        self.play(Create({box_var}), run_time={t_box:.3f})
-        self.wait({t_hold:.3f})
-        self.play(FadeOut({box_var}), run_time={min(t_out, ANIM_CAP_FADE):.3f})
-"""
-        return block, prev_var, active_latex
 
     if prev_var is not None:
         block = f"""        {var_name} = MathTex({repr(latex)})
@@ -238,20 +233,24 @@ def _active_latex_after_segment(seg: Segment, prev_active: str | None) -> str | 
     vt = seg.visual_type
     p = seg.visual_params
     if vt == "equation_write":
-        return str(p.get("latex", ""))
+        return wrap_korean_text_runs(str(p.get("latex", "")))
     if vt == "equation_transform":
-        return str(p.get("to_latex", ""))
+        return wrap_korean_text_runs(str(p.get("to_latex", "")))
     if vt == "equation_steps":
         steps = p.get("steps") or []
         if isinstance(steps, list) and steps:
             last = steps[-1]
-            return str(last) if isinstance(last, str) else str(last.get("latex", ""))
+            return (
+                wrap_korean_text_runs(str(last))
+                if isinstance(last, str)
+                else wrap_korean_text_runs(str(last.get("latex", "")))
+            )
         return prev_active
     if vt == "equation_derivation":
         parsed = _parse_derivation_steps(seg.visual_params)
         return parsed[-1][0] if parsed else prev_active
     if vt == "highlight_result":
-        return str(p.get("latex", ""))
+        return wrap_korean_text_runs(str(p.get("latex", "")))
     return prev_active
 
 
@@ -265,7 +264,11 @@ class ChainRenderer:
             raise ValueError("segments and durations length mismatch")
 
         all_latex = _collect_all_latex(chain)
-        imports = scene_imports(*all_latex) if all_latex else "from manim import *\nimport numpy as np"
+        imports = (
+            scene_imports(*all_latex)
+            if all_latex
+            else "from manim import *\nimport numpy as np"
+        )
 
         body_parts: list[str] = []
         prev_var: str | None = None

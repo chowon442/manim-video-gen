@@ -1,6 +1,8 @@
 """VideoComposer helper tests."""
 
+import json
 from pathlib import Path
+import subprocess
 from unittest.mock import patch
 
 from manim_video_gen.video.composer import VideoComposer
@@ -52,7 +54,7 @@ def test_generate_silence_audio_builds_ffmpeg_command(tmp_path: Path):
 
     cmd = run_mock.call_args[0][0]
     assert cmd[0] == "ffmpeg"
-    assert "anullsrc=r=48000:cl=stereo" in cmd
+    assert "anullsrc=r=24000:cl=mono" in cmd
     assert "-t" in cmd
     assert str(out.resolve()) == cmd[-1]
 
@@ -73,3 +75,54 @@ def test_compose_final_with_bridges_falls_back_to_compose_final(tmp_path: Path):
 
     compose_mock.assert_called_once_with([seg], out)
     assert result == out
+
+
+def test_concat_segments_normalizes_mismatched_audio_specs_before_concat(
+    tmp_path: Path,
+):
+    composer = VideoComposer(crossfade_duration=0.0)
+    a = tmp_path / "a.mp4"
+    b = tmp_path / "b.mp4"
+    out = tmp_path / "out.mp4"
+    a.write_bytes(b"a")
+    b.write_bytes(b"b")
+
+    def _fake_run(cmd, **kwargs):
+        if cmd[0] != "ffprobe":
+            raise AssertionError(f"unexpected subprocess.run call: {cmd}")
+        target = Path(cmd[-1])
+        payload = {
+            "streams": [
+                {
+                    "sample_rate": "24000",
+                    "channels": 1,
+                }
+            ]
+        }
+        if target == b:
+            payload = {
+                "streams": [
+                    {
+                        "sample_rate": "48000",
+                        "channels": 2,
+                    }
+                ]
+            }
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps(payload), stderr=""
+        )
+
+    with patch("manim_video_gen.video.composer.subprocess.run", side_effect=_fake_run):
+        with patch.object(VideoComposer, "_run") as run_mock:
+            composer.concat_segments([a, b], out)
+
+    calls = [c[0][0] for c in run_mock.call_args_list]
+    assert any(cmd[0] == "ffmpeg" and "-f" in cmd and "concat" in cmd for cmd in calls)
+    assert any(
+        cmd[0] == "ffmpeg"
+        and "-ar" in cmd
+        and cmd[cmd.index("-ar") + 1] == "24000"
+        and "-ac" in cmd
+        and cmd[cmd.index("-ac") + 1] == "1"
+        for cmd in calls
+    )

@@ -252,7 +252,7 @@ class VideoComposer:
             "-f",
             "lavfi",
             "-i",
-            "anullsrc=r=48000:cl=stereo",
+            "anullsrc=r=24000:cl=mono",
             "-t",
             f"{dur:.3f}",
             "-c:a",
@@ -287,13 +287,14 @@ class VideoComposer:
         if not segment_paths:
             raise ValueError("No segments to concatenate")
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        normalized_paths = self._normalize_concat_audio_specs(segment_paths)
         if len(segment_paths) == 1:
             # Copy via ffmpeg to normalize container
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-i",
-                str(segment_paths[0]),
+                str(normalized_paths[0]),
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -311,9 +312,83 @@ class VideoComposer:
 
         cf = self.crossfade_duration
         if cf <= 0:
-            return self._concat_demuxer(segment_paths, output_path)
+            return self._concat_demuxer(normalized_paths, output_path)
 
-        return self._concat_xfade(segment_paths, output_path, cf)
+        return self._concat_xfade(normalized_paths, output_path, cf)
+
+    def _normalize_concat_audio_specs(self, segment_paths: list[Path]) -> list[Path]:
+        """Normalize audio specs across clips to avoid concat timestamp corruption."""
+        if not segment_paths:
+            return []
+
+        specs: list[tuple[str, str]] = []
+        paths = [Path(p).resolve() for p in segment_paths]
+        for p in paths:
+            completed = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a:0",
+                    "-show_entries",
+                    "stream=sample_rate,channels",
+                    "-of",
+                    "json",
+                    str(p),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            info = json.loads(completed.stdout)
+            streams = info.get("streams") or []
+            if not streams:
+                raise CompositionError(
+                    "audio stream missing for concat input",
+                    stage="compose",
+                    detail=str(p),
+                )
+            s0 = streams[0]
+            specs.append((str(s0.get("sample_rate", "")), str(s0.get("channels", ""))))
+
+        target = specs[0]
+        if all(sp == target for sp in specs):
+            return paths
+
+        out_paths: list[Path] = []
+        for i, (p, sp) in enumerate(zip(paths, specs, strict=True)):
+            if sp == target:
+                out_paths.append(p)
+                continue
+            fixed = p.with_name(f"{p.stem}_norm_{i:02d}{p.suffix}")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(p),
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-ar",
+                target[0],
+                "-ac",
+                target[1],
+                str(fixed),
+            ]
+            self._run(cmd)
+            out_paths.append(fixed)
+            logger.info(
+                "normalized concat audio spec %s -> %s/%s for %s",
+                sp,
+                target[0],
+                target[1],
+                fixed.name,
+            )
+
+        return out_paths
 
     def _concat_demuxer(self, segment_paths: list[Path], output_path: Path) -> Path:
         with tempfile.NamedTemporaryFile(

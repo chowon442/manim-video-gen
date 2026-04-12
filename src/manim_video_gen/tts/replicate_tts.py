@@ -60,6 +60,15 @@ def _ffprobe_duration_seconds(path: Path) -> float:
 
 def _output_to_url(output: Any) -> str:
     """Normalize Replicate run() return value to an HTTP(S) URL string."""
+    if isinstance(output, list):
+        if len(output) == 1:
+            return _output_to_url(output[0])
+        raise TTSError(
+            "Replicate qwen3-tts returned a list output with unexpected length",
+            stage="tts",
+            detail=f"len={len(output)}",
+        )
+
     if isinstance(output, str) and output.startswith(("http://", "https://")):
         return output
     url = getattr(output, "url", None)
@@ -81,7 +90,9 @@ def _build_input(settings: Settings, text: str) -> dict[str, Any]:
     }
 
     if mode == "custom_voice":
-        payload["speaker"] = (settings.replicate_tts_speaker or "Aiden").strip() or "Aiden"
+        payload["speaker"] = (
+            settings.replicate_tts_speaker or "Aiden"
+        ).strip() or "Aiden"
     elif mode == "voice_clone":
         ref_audio = (settings.replicate_tts_reference_audio or "").strip()
         if not ref_audio:
@@ -136,7 +147,9 @@ class ReplicateTTS(TTSProvider):
         elapsed = time.monotonic() - self._last_prediction_monotonic
         wait = min_iv - elapsed
         if wait > 0:
-            logger.debug("Replicate TTS spacing: sleeping %.2fs before prediction", wait)
+            logger.debug(
+                "Replicate TTS spacing: sleeping %.2fs before prediction", wait
+            )
             await asyncio.sleep(wait)
 
     async def _run_predict_with_retry(self, input_payload: dict[str, Any]) -> Any:

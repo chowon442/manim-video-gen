@@ -14,6 +14,7 @@ from manim_video_gen.video.anim_timing import (
     split_write,
 )
 from manim_video_gen.video.latex_korean import (
+    apply_text_glyph_fallback,
     sanitize_latex_for_text_label,
     wrap_korean_text_runs,
 )
@@ -233,7 +234,7 @@ class EquationDerivationTemplate:
             if ann.strip():
                 lab_name = f"lab_{idx}"
                 lines.append(
-                    f"        {lab_name} = Text({repr(ann.strip())}, font_size=26)\n"
+                    f"        {lab_name} = Text({repr(apply_text_glyph_fallback(ann.strip()))}, font_size=26)\n"
                     f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
                     f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
                 )
@@ -338,7 +339,7 @@ class NumberLinePlotTemplate:
                 if has_cjk(lbl):
                     plain_lbl = sanitize_latex_for_text_label(lbl)
                     body.append(
-                        f"        lbl_{j} = Text({repr(plain_lbl)}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
+                        f"        lbl_{j} = Text({repr(apply_text_glyph_fallback(plain_lbl))}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
                         + indent_lines(
                             fit_text_mobject_lines(
                                 f"lbl_{j}", max_width_expr="config.frame_width * 0.45"
@@ -421,7 +422,7 @@ class AnnotatedEquationTemplate:
             )
             if txt:
                 lines.append(
-                    f"        tx_{idx} = Text({repr(txt)}, font_size=22)\n"
+                    f"        tx_{idx} = Text({repr(apply_text_glyph_fallback(txt))}, font_size=22)\n"
                     + f"        tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
                     + indent_lines(
                         fit_text_mobject_lines(
@@ -530,7 +531,7 @@ class GraphPlotTemplate:
                     plain_label = sanitize_latex_for_text_label(p_label)
                     point_lines += (
                         f"        p_{i} = Dot(axes.c2p({x}, {y}), color={p_color}, radius=0.08)\n"
-                        f"        p_{i}_lbl = Text({repr(plain_label)}, font_size=24).next_to(p_{i}, UP, buff=0.14)\n"
+                        f"        p_{i}_lbl = Text({repr(apply_text_glyph_fallback(plain_label))}, font_size=24).next_to(p_{i}, UP, buff=0.14)\n"
                         + indent_lines(
                             fit_text_mobject_lines(
                                 f"p_{i}_lbl", max_width_expr="config.frame_width * 0.45"
@@ -634,7 +635,7 @@ class TitleCardTemplate:
         sub_block = ""
         if subtitle.strip():
             sub_block = (
-                f"        st = Text({repr(subtitle)}, font_size=36)\n"
+                f"        st = Text({repr(apply_text_glyph_fallback(subtitle))}, font_size=36)\n"
                 + f"        st.next_to(tt, DOWN, buff=0.4)\n"
                 + indent_lines(fit_text_mobject_lines("st"), 8)
                 + f"        self.play(FadeIn(st, shift=UP*0.1), run_time={t2:.3f})\n"
@@ -644,7 +645,7 @@ class TitleCardTemplate:
 
 class Segment(Scene):
     def construct(self):
-        tt = Text({repr(title)}, font_size=48)
+        tt = Text({repr(apply_text_glyph_fallback(title))}, font_size=48)
 {indent_lines(fit_text_mobject_lines("tt", top_edge=True, top_buff=0.5), 8)}        tt.to_edge(UP, buff=0.5)
         self.play(FadeIn(tt, shift=DOWN*0.15), run_time={t1:.3f})
 {sub_block}        self.wait({t_end:.3f})
@@ -675,9 +676,9 @@ class IntroProblemTemplate:
 
 class Segment(Scene):
     def construct(self):
-        head = Text({repr(label)}, font_size=40)
+        head = Text({repr(apply_text_glyph_fallback(label))}, font_size=40)
 {indent_lines(fit_text_mobject_lines("head", top_edge=True, top_buff=0.4), 8)}        head.to_edge(UP, buff=0.4)
-        body = Text({repr(problem_text)}, font_size=32).next_to(head, DOWN, buff=0.5)
+        body = Text({repr(apply_text_glyph_fallback(problem_text))}, font_size=32).next_to(head, DOWN, buff=0.5)
 {indent_lines(fit_text_mobject_lines("body", top_edge=True, top_buff=1.2), 8)}        body.to_edge(UP, buff=1.2)
         self.play(FadeIn(head), run_time={t1:.3f})
         self.play(FadeIn(body, shift=UP*0.1), run_time={t2:.3f})
@@ -703,7 +704,8 @@ class OutroSummaryTemplate:
         if not summary_lines:
             summary_lines = [summary.strip() or "정리"]
         text_items = ",\n            ".join(
-            f"Text({repr(line)}, font_size=34)" for line in summary_lines
+            f"Text({repr(apply_text_glyph_fallback(line))}, font_size=34)"
+            for line in summary_lines
         )
 
         fade_out = _FADE_OUT_SECONDS

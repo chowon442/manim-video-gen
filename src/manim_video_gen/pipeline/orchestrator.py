@@ -554,6 +554,9 @@ async def _render_standalone_segment(
     settings: Settings,
 ) -> tuple[Path, Path, str, int]:
     """Returns (merged_mp4_path, video_only_path, manim_code, llm_manim_retries)."""
+    if settings.disable_prev_scene_state and seg.prev_scene_state is not None:
+        seg = seg.model_copy(update={"prev_scene_state": None})
+
     llm_retries = 0
     force_llm = _requires_custom_scene(seg)
     if force_llm:
@@ -628,6 +631,37 @@ async def _render_equation_chain(
     registry: TemplateRegistry,
 ) -> tuple[Path, str, int]:
     """Render merged equation chain; fallback to per-segment on failure."""
+    if settings.disable_equation_chain:
+        parts: list[Path] = []
+        codes: list[str] = []
+        llm_retries = 0
+        for seg, tts_res, dur in zip(
+            chain.segments, chain.tts_results, chain.durations, strict=True
+        ):
+            safe_seg = (
+                seg.model_copy(update={"prev_scene_state": None})
+                if settings.disable_prev_scene_state
+                else seg
+            )
+            p, _v, c, n = await _render_standalone_segment(
+                seg=safe_seg,
+                tts_result=tts_res,
+                duration=float(dur),
+                workspace=workspace,
+                registry=registry,
+                client=client,
+                composer=composer,
+                settings=settings,
+            )
+            parts.append(p)
+            codes.append(c)
+            llm_retries += n
+        first_id = chain.segments[0].id
+        stem = f"chain_{first_id:02d}"
+        fallback_out = workspace.root / f"merged_{stem}_fallback.mp4"
+        await asyncio.to_thread(composer.concat_segments, parts, fallback_out)
+        return fallback_out, "\n\n# --- chain disabled ---\n\n".join(codes), llm_retries
+
     first_id = chain.segments[0].id
     stem = f"chain_{first_id:02d}"
 
@@ -691,8 +725,13 @@ async def _render_equation_chain(
         for seg, tts_res, dur in zip(
             chain.segments, chain.tts_results, chain.durations, strict=True
         ):
+            safe_seg = (
+                seg.model_copy(update={"prev_scene_state": None})
+                if settings.disable_prev_scene_state
+                else seg
+            )
             p, _v, c, n = await _render_standalone_segment(
-                seg=seg,
+                seg=safe_seg,
                 tts_result=tts_res,
                 duration=float(dur),
                 workspace=workspace,

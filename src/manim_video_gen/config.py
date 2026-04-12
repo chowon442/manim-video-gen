@@ -28,6 +28,21 @@ class Settings(BaseSettings):
         default="",
         validation_alias="OPENROUTER_API_KEY",
     )
+    openrouter_retries: int = Field(
+        default=2,
+        validation_alias="MANIM_VIDEO_GEN_OPENROUTER_RETRIES",
+        description="Retry attempts for transient OpenRouter/provider errors.",
+    )
+    openrouter_retry_base_seconds: float = Field(
+        default=1.5,
+        validation_alias="MANIM_VIDEO_GEN_OPENROUTER_RETRY_BASE_SECONDS",
+        description="Base backoff seconds for OpenRouter retries.",
+    )
+    openrouter_retry_max_seconds: float = Field(
+        default=15.0,
+        validation_alias="MANIM_VIDEO_GEN_OPENROUTER_RETRY_MAX_SECONDS",
+        description="Maximum backoff seconds for OpenRouter retries.",
+    )
     elevenlabs_api_key: str = Field(
         default="",
         validation_alias="ELEVENLABS_API_KEY",
@@ -73,6 +88,22 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED",
         description="Enable semantic bridge transition generation between adjacent rendered chains/scenes.",
+    )
+    disable_equation_chain: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_DISABLE_EQUATION_CHAIN",
+        description=(
+            "Disable merged equation-chain rendering and render each segment independently. "
+            "Recommended when prioritizing no-overlap stability over transition continuity."
+        ),
+    )
+    disable_prev_scene_state: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_DISABLE_PREV_SCENE_STATE",
+        description=(
+            "Do not inject prev_scene_state objects into standalone scenes. "
+            "Helps prevent visual overlaps caused by stale carry-over state."
+        ),
     )
 
     tts_provider: Literal["elevenlabs", "azure", "replicate"] = Field(

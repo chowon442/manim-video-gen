@@ -13,6 +13,7 @@ from manim_video_gen.video.anim_timing import (
     split_write,
 )
 from manim_video_gen.video.latex_korean import wrap_korean_text_runs
+from manim_video_gen.video.latex_korean import apply_text_glyph_fallback
 from manim_video_gen.video.templates.equation import _collect_latex_values
 from manim_video_gen.video.templates.more import (
     _derivation_segment_times,
@@ -171,7 +172,7 @@ def _snippet_equation_derivation(
         if ann.strip():
             lab_name = f"lab_{idx}"
             lines.append(
-                f"        {lab_name} = Text({repr(ann.strip())}, font_size=26)\n"
+                f"        {lab_name} = Text({repr(apply_text_glyph_fallback(ann.strip()))}, font_size=26)\n"
                 f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
                 f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
             )

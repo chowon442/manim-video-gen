@@ -12,12 +12,18 @@
 
 OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `.env`의 `MANIM_VIDEO_GEN_MODEL_*`로 지정합니다.
 
+일시적 OpenRouter/provider 오류(예: 429, 5xx, provider code 524)는 아래 설정으로 동일 요청 재시도합니다.
+- `MANIM_VIDEO_GEN_OPENROUTER_RETRIES`
+- `MANIM_VIDEO_GEN_OPENROUTER_RETRY_BASE_SECONDS`
+- `MANIM_VIDEO_GEN_OPENROUTER_RETRY_MAX_SECONDS`
+
 선택 기능: 하단 자막(`MANIM_VIDEO_GEN_BURN_SUBTITLES`), 배경음(`MANIM_VIDEO_GEN_BGM_PATH`), 출력 해상도/FPS(`MANIM_VIDEO_GEN_VIDEO_*`), 진행 콜백(`generate_video(..., on_progress=...)`), Docker(`Dockerfile`).
 
 추가 옵션:
 - 자막 줄바꿈/스타일(`MANIM_VIDEO_GEN_SUBTITLE_WRAP_MODE=auto|char`, `MANIM_VIDEO_GEN_SUBTITLE_MAX_CHARS`, `MANIM_VIDEO_GEN_SUBTITLE_FONT_SIZE`, `MANIM_VIDEO_GEN_SUBTITLE_MARGIN_*`)
 - 자막과 영상 비겹침 하단 safe area(`MANIM_VIDEO_GEN_SUBTITLE_SAFE_AREA_PX`)
 - 씬 간 의미 기반 브리지 전환(`MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED`, 실패 시 즉시 fallback)
+- 겹침 방지 안전 모드(`MANIM_VIDEO_GEN_DISABLE_EQUATION_CHAIN`, `MANIM_VIDEO_GEN_DISABLE_PREV_SCENE_STATE`)
 - 나레이션-시각화 정합성 검사(`MANIM_VIDEO_GEN_CONSISTENCY_MODE=off|warn|error`)
 - error 모드 자동복구(`MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR`, `MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR_MAX_ATTEMPTS`)
 - 사후 분석 덤프(`MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP=true`) 및 워크스페이스 유지(`MANIM_VIDEO_GEN_KEEP_WORKSPACE=true`)
@@ -35,6 +41,12 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 - `MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED`
   - `true`: 인접 씬 경계에서 의미 기반 브리지(현재는 수식 중심 transform) 시도
   - 매핑 확신이 낮거나 브리지 렌더 실패 시 즉시 기존 전환(hard cut)으로 fallback
+- `MANIM_VIDEO_GEN_DISABLE_EQUATION_CHAIN`
+  - `true`(기본): 연속 수식 chain 병합 렌더를 끄고 segment 독립 렌더 + concat
+  - 겹침/중첩 재발 방지를 최우선으로 할 때 권장
+- `MANIM_VIDEO_GEN_DISABLE_PREV_SCENE_STATE`
+  - `true`(기본): standalone scene에서 `prev_scene_state` 주입을 비활성화
+  - 이전 수식 재주입으로 인한 레이아웃 충돌을 방지
 - `MANIM_VIDEO_GEN_CONSISTENCY_MODE`
   - `off`: 검사 비활성
   - `warn`: 불일치 이슈를 로그만 남기고 진행
@@ -88,6 +100,17 @@ python3 scripts/test_tts.py
 python3 scripts/test_openrouter.py
 python3 scripts/test_prompt_chain.py
 ```
+
+## 렌더 회귀 점검 스크립트 (겹침/흰 네모 감시)
+
+아래 스크립트로 특정 시점 프레임을 자동 점검할 수 있습니다.
+
+```bash
+python scripts/verify_render_regressions.py --video artifacts/final_bridge_verify.mp4 --at 48 --at 62 --at 87 --at 98 --at 167 --at 219
+```
+
+- `OVERLAP_SUSPECT`: 겹침 가능성이 큰 프레임
+- `BRIGHT_BOX_SUSPECT`: 흰 네모(tofu) 가능성이 큰 프레임
 
 ---
 

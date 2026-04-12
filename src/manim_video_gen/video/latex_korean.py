@@ -11,11 +11,41 @@ from __future__ import annotations
 import re
 
 
-_HANGUL_RUN_RE = re.compile(r"[가-힣]+(?:\s+[가-힣]+)+")
+_HANGUL_RUN_RE = re.compile(r"[가-힣0-9]+(?:\s+[가-힣0-9]+)+")
 _TEXT_CMD_RE = re.compile(r"\\text\{[^}]*\}")
 _TEXT_CMD_CAPTURE_RE = re.compile(r"\\text\s*\{([^{}]*)\}")
+_HSPACE_CMD_RE = re.compile(r"\\hspace\s*\{[^{}]*\}")
 _SPACING_CMD_RE = re.compile(r"\\[,;:]")
 _GENERIC_LATEX_CMD_RE = re.compile(r"\\[a-zA-Z]+")
+
+_MATH_GLYPH_FALLBACKS: dict[str, str] = {
+    "ᵀ": r"^{\mathsf T}",
+}
+
+_TEXT_GLYPH_FALLBACKS: dict[str, str] = {
+    "ᵀ": "^T",
+}
+
+
+def apply_math_glyph_fallback(latex: str) -> str:
+    """Replace known unsupported glyphs with MathTex-safe fragments."""
+    out = str(latex)
+    for src, repl in _MATH_GLYPH_FALLBACKS.items():
+        out = out.replace(src, repl)
+    return out
+
+
+def apply_text_glyph_fallback(text: str) -> str:
+    """Replace known unsupported glyphs with Text-safe alternatives."""
+    out = str(text)
+    for src, repl in _TEXT_GLYPH_FALLBACKS.items():
+        out = out.replace(src, repl)
+    return out
+
+
+def _visible_cjk_space_payload(run: str) -> str:
+    normalized = re.sub(r"\s+", " ", str(run)).strip()
+    return normalized.replace(" ", r"\hspace{0.33em}")
 
 
 def wrap_korean_text_runs(latex: str) -> str:
@@ -23,7 +53,7 @@ def wrap_korean_text_runs(latex: str) -> str:
 
     Existing ``\\text{...}`` blocks are preserved.
     """
-    s = str(latex)
+    s = apply_math_glyph_fallback(latex)
     protected: list[str] = []
 
     def _protect(m: re.Match[str]) -> str:
@@ -33,7 +63,7 @@ def wrap_korean_text_runs(latex: str) -> str:
     s = _TEXT_CMD_RE.sub(_protect, s)
 
     def _repl(m: re.Match[str]) -> str:
-        return rf"\text{{{m.group(0)}}}"
+        return rf"\text{{{_visible_cjk_space_payload(m.group(0))}}}"
 
     s = _HANGUL_RUN_RE.sub(_repl, s)
 
@@ -44,8 +74,9 @@ def wrap_korean_text_runs(latex: str) -> str:
 
 def sanitize_latex_for_text_label(text: str) -> str:
     """Convert light LaTeX fragments into plain text for Text(...)."""
-    s = str(text)
+    s = apply_text_glyph_fallback(text)
     s = _SPACING_CMD_RE.sub(" ", s)
+    s = _HSPACE_CMD_RE.sub(" ", s)
     s = _TEXT_CMD_CAPTURE_RE.sub(r"\1", s)
     s = _GENERIC_LATEX_CMD_RE.sub("", s)
     s = s.replace("\\", "")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import asyncio
 from typing import Any, TypeVar
 
 import httpx
@@ -94,32 +95,115 @@ class OpenRouterClient:
             "temperature": temperature,
         }
 
+        max_retries = max(0, int(self._settings.openrouter_retries))
+
+        def _is_provider_body_error(data: dict[str, Any]) -> tuple[bool, int, str]:
+            err = data.get("error")
+            if not isinstance(err, dict):
+                return False, 0, ""
+            code = int(err.get("code", 0) or 0)
+            msg = str(err.get("message", ""))
+            retriable = code in {429, 502, 503, 504, 524}
+            return retriable, code, msg
+
+        async def _request_once(client: httpx.AsyncClient) -> dict[str, Any]:
+            response = await client.post(
+                OPENROUTER_CHAT_URL, headers=headers, json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+
+        async def _request_with_retry(client: httpx.AsyncClient) -> dict[str, Any]:
+            for attempt in range(max_retries + 1):
+                try:
+                    data = await _request_once(client)
+                    retriable_body, code, msg = _is_provider_body_error(data)
+                    if retriable_body:
+                        if attempt >= max_retries:
+                            raise LLMError(
+                                f"OpenRouter provider error {code}",
+                                stage="llm",
+                                detail=msg[:800],
+                            )
+                        wait = min(
+                            float(self._settings.openrouter_retry_max_seconds),
+                            float(self._settings.openrouter_retry_base_seconds)
+                            * (2**attempt),
+                        )
+                        logger.warning(
+                            "OpenRouter provider error %s, retry %d/%d after %.2fs: %s",
+                            code,
+                            attempt + 1,
+                            max_retries,
+                            wait,
+                            msg,
+                        )
+                        if wait > 0:
+                            await asyncio.sleep(wait)
+                        continue
+                    return data
+                except httpx.HTTPStatusError as exc:
+                    status = exc.response.status_code if exc.response is not None else 0
+                    retriable = status == 429 or (500 <= status < 600)
+                    if not retriable or attempt >= max_retries:
+                        txt = (
+                            exc.response.text[:800]
+                            if exc.response is not None
+                            else str(exc)
+                        )
+                        logger.error("OpenRouter error: %s", txt)
+                        raise LLMError(
+                            f"OpenRouter HTTP {status}",
+                            stage="llm",
+                            detail=txt,
+                        ) from exc
+                    wait = min(
+                        float(self._settings.openrouter_retry_max_seconds),
+                        float(self._settings.openrouter_retry_base_seconds)
+                        * (2**attempt),
+                    )
+                    logger.warning(
+                        "OpenRouter transient HTTP %s, retry %d/%d after %.2fs",
+                        status,
+                        attempt + 1,
+                        max_retries,
+                        wait,
+                    )
+                    if wait > 0:
+                        await asyncio.sleep(wait)
+                except httpx.HTTPError as exc:
+                    if attempt >= max_retries:
+                        logger.error(
+                            "OpenRouter transport error after retries: %s", exc
+                        )
+                        raise LLMError(
+                            "OpenRouter transport error",
+                            stage="llm",
+                            detail=str(exc)[:800],
+                        ) from exc
+                    wait = min(
+                        float(self._settings.openrouter_retry_max_seconds),
+                        float(self._settings.openrouter_retry_base_seconds)
+                        * (2**attempt),
+                    )
+                    logger.warning(
+                        "OpenRouter transport error, retry %d/%d after %.2fs: %s",
+                        attempt + 1,
+                        max_retries,
+                        wait,
+                        exc,
+                    )
+                    if wait > 0:
+                        await asyncio.sleep(wait)
+
+            raise LLMError("OpenRouter retry loop exhausted", stage="llm")
+
         if self._client is not None:
-            response = await self._client.post(OPENROUTER_CHAT_URL, headers=headers, json=payload)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                logger.error("OpenRouter error: %s", response.text[:800])
-                raise LLMError(
-                    f"OpenRouter HTTP {response.status_code}",
-                    stage="llm",
-                    detail=response.text[:800],
-                ) from exc
-            data = response.json()
+            data = await _request_with_retry(self._client)
         else:
             timeout = httpx.Timeout(self._settings.llm_timeout_seconds)
             async with httpx.AsyncClient(timeout=timeout) as tmp_client:
-                response = await tmp_client.post(OPENROUTER_CHAT_URL, headers=headers, json=payload)
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    logger.error("OpenRouter error: %s", response.text[:800])
-                    raise LLMError(
-                        f"OpenRouter HTTP {response.status_code}",
-                        stage="llm",
-                        detail=response.text[:800],
-                    ) from exc
-                data = response.json()
+                data = await _request_with_retry(tmp_client)
 
         try:
             return str(data["choices"][0]["message"]["content"])

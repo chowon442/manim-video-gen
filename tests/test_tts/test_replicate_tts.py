@@ -105,7 +105,9 @@ def test_build_input_voice_design_missing_desc_raises(monkeypatch) -> None:
 
 
 def test_output_to_url_string() -> None:
-    assert _output_to_url("https://cdn.example/out.wav") == "https://cdn.example/out.wav"
+    assert (
+        _output_to_url("https://cdn.example/out.wav") == "https://cdn.example/out.wav"
+    )
 
 
 def test_output_to_url_object_with_url() -> None:
@@ -117,6 +119,18 @@ def test_output_to_url_object_with_url() -> None:
 def test_output_to_url_invalid_raises() -> None:
     with pytest.raises(TTSError, match="unexpected output"):
         _output_to_url(42)
+
+
+def test_output_to_url_list_single_string() -> None:
+    assert (
+        _output_to_url(["https://cdn.example/out.wav"]) == "https://cdn.example/out.wav"
+    )
+
+
+def test_output_to_url_list_single_object_with_url() -> None:
+    obj = MagicMock()
+    obj.url = "https://cdn.example/f.wav"
+    assert _output_to_url([obj]) == "https://cdn.example/f.wav"
 
 
 @pytest.mark.asyncio

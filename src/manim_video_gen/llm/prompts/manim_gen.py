@@ -138,6 +138,13 @@ def build_manim_user_prompt(
         prior += "\n\nPrevious errors (fix them):\n" + "\n".join(
             f"- {e}" for e in prior_errors
         )
+        prior += (
+            "\n\nRetry instruction:\n"
+            "- Analyze the exact root causes in the previous errors above.\n"
+            "- Rewrite the scene to avoid those failures.\n"
+            "- Do not repeat the failing patterns from previous attempts.\n"
+            "- Explain briefly in code comments where you changed the risky part."
+        )
     if prior_codes:
         prior += "\n\nPrevious full code attempts (rewrite or fix; do not repeat mistakes):\n"
         for i, code in enumerate(prior_codes):

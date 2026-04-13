@@ -90,11 +90,11 @@ class Settings(BaseSettings):
     )
 
     crossfade_duration: float = Field(
-        default=0.4,
+        default=0.2,
         validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
     )
     scene_bridge_enabled: bool = Field(
-        default=True,
+        default=False,
         validation_alias="MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED",
         description="Enable semantic bridge transition generation between adjacent rendered chains/scenes.",
     )

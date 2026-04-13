@@ -36,8 +36,59 @@ def ffprobe_duration_seconds(path: Path) -> float:
 
 
 class VideoComposer:
-    def __init__(self, *, crossfade_duration: float) -> None:
+    def __init__(
+        self,
+        *,
+        crossfade_duration: float,
+        inter_scene_gap_seconds: float = 0.0,
+    ) -> None:
         self.crossfade_duration = float(crossfade_duration)
+        self.inter_scene_gap_seconds = max(0.0, float(inter_scene_gap_seconds))
+
+    def extend_segment_tail_with_last_frame_hold(
+        self,
+        *,
+        input_path: Path,
+        hold_seconds: float,
+        output_path: Path,
+    ) -> Path:
+        """Append time after the clip by freezing the last video frame and padding silence on audio."""
+        hold = float(hold_seconds)
+        if hold <= 0:
+            raise ValueError("hold_seconds must be positive")
+        inp = Path(input_path).resolve()
+        output_path = Path(output_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if not inp.is_file():
+            raise FileNotFoundError(f"Segment not found: {inp}")
+
+        vf = f"tpad=stop_mode=clone:stop_duration={hold:.6f}"
+        af = f"apad=pad_dur={hold:.6f}"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(inp),
+            "-vf",
+            vf,
+            "-af",
+            af,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            str(output_path),
+        ]
+        self._run(cmd)
+        return output_path
 
     def merge_segment(
         self,
@@ -309,6 +360,36 @@ class VideoComposer:
             ]
             self._run(cmd)
             return output_path
+
+        gap = float(self.inter_scene_gap_seconds)
+        if gap > 1e-6:
+            if self.crossfade_duration > 1e-6:
+                logger.info(
+                    "inter_scene_gap_seconds=%.3f: crossfade (%.3fs) is not applied; "
+                    "using straight concat with last-frame hold before each cut",
+                    gap,
+                    self.crossfade_duration,
+                )
+            n = len(normalized_paths)
+            prepared: list[Path] = []
+            hold_outputs: list[Path] = []
+            try:
+                for i, p in enumerate(normalized_paths):
+                    if i < n - 1:
+                        hold_path = output_path.parent / f"_hold_tail_{i:03d}.mp4"
+                        hold_outputs.append(hold_path)
+                        self.extend_segment_tail_with_last_frame_hold(
+                            input_path=p,
+                            hold_seconds=gap,
+                            output_path=hold_path,
+                        )
+                        prepared.append(hold_path)
+                    else:
+                        prepared.append(p)
+                return self._concat_demuxer(prepared, output_path)
+            finally:
+                for hp in hold_outputs:
+                    hp.unlink(missing_ok=True)
 
         cf = self.crossfade_duration
         if cf <= 0:

@@ -126,3 +126,54 @@ def test_concat_segments_normalizes_mismatched_audio_specs_before_concat(
         and cmd[cmd.index("-ac") + 1] == "1"
         for cmd in calls
     )
+
+
+def test_concat_segments_inter_scene_gap_extends_tail_and_skips_crossfade(
+    tmp_path: Path,
+):
+    a = tmp_path / "a.mp4"
+    b = tmp_path / "b.mp4"
+    out = tmp_path / "out.mp4"
+    a.write_bytes(b"a")
+    b.write_bytes(b"b")
+
+    composer = VideoComposer(crossfade_duration=0.25, inter_scene_gap_seconds=0.4)
+
+    def _fake_run(cmd, **kwargs):
+        if cmd[0] != "ffprobe":
+            raise AssertionError(f"unexpected subprocess.run call: {cmd}")
+        target = Path(cmd[-1])
+        payload = {
+            "streams": [
+                {
+                    "sample_rate": "48000",
+                    "channels": 2,
+                }
+            ]
+        }
+        if target in (a, b):
+            pass
+        else:
+            raise AssertionError(f"unexpected ffprobe target: {target}")
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps(payload), stderr=""
+        )
+
+    with patch("manim_video_gen.video.composer.subprocess.run", side_effect=_fake_run):
+        with patch.object(composer, "extend_segment_tail_with_last_frame_hold") as hold_mock:
+
+            def _touch_hold(**kw):
+                Path(kw["output_path"]).write_bytes(b"hold")
+
+            hold_mock.side_effect = _touch_hold
+            with patch.object(composer, "_concat_demuxer") as demux_mock:
+                demux_mock.return_value = out
+                result = composer.concat_segments([a, b], out)
+
+    assert result == out
+    hold_mock.assert_called_once()
+    demux_mock.assert_called_once()
+    prepared = demux_mock.call_args[0][0]
+    assert len(prepared) == 2
+    assert prepared[1] == b.resolve()
+    assert hold_mock.call_args[1]["hold_seconds"] == 0.4

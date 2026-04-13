@@ -912,7 +912,10 @@ async def generate_video(
     problem = MathProblem(problem_text=problem_text)
     tts = get_tts_provider(settings)
     registry = TemplateRegistry()
-    composer = VideoComposer(crossfade_duration=settings.crossfade_duration)
+    composer = VideoComposer(
+        crossfade_duration=settings.crossfade_duration,
+        inter_scene_gap_seconds=settings.inter_scene_gap_seconds,
+    )
 
     workspace = SessionWorkspace()
     llm_retries_total = 0

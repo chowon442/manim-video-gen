@@ -93,6 +93,16 @@ class Settings(BaseSettings):
         default=0.2,
         validation_alias="MANIM_VIDEO_GEN_CROSSFADE_DURATION",
     )
+    inter_scene_gap_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias="MANIM_VIDEO_GEN_INTER_SCENE_GAP_SECONDS",
+        description=(
+            "After each scene except the last, hold the final video frame and pad silence "
+            "for this many seconds before the next scene (ffmpeg tpad+apad). "
+            "When > 0, crossfade is not applied (simple concat). Default 0 disables."
+        ),
+    )
     scene_bridge_enabled: bool = Field(
         default=False,
         validation_alias="MANIM_VIDEO_GEN_SCENE_BRIDGE_ENABLED",

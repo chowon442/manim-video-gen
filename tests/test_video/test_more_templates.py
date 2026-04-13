@@ -123,6 +123,33 @@ def test_annotated_equation_template_compiles():
     compile(code, "<ann>", "exec")
 
 
+def test_annotated_equation_template_guards_missing_target_tex():
+    code = AnnotatedEquationTemplate.render_code(
+        params={
+            "latex": r"\\det({{H}}) = (2)(4) - (1)^2 = {{7}} > 0",
+            "annotations": [
+                {
+                    "target_tex": "H",
+                    "text": "양의 정부호 (Positive Definite)",
+                    "direction": "UP",
+                },
+                {
+                    "target_tex": "7",
+                    "text": "엄격한 볼록 함수",
+                    "direction": "DOWN",
+                },
+            ],
+        },
+        duration=8.0,
+        prev_scene_state=None,
+    )
+    assert "part_0 = eq.get_part_by_tex('H')" in code
+    assert "if part_0 is not None:" in code
+    assert "part_1 = eq.get_part_by_tex('7')" in code
+    assert "if part_1 is not None:" in code
+    compile(code, "<ann_guard>", "exec")
+
+
 def test_registry_has_new_templates():
     reg = TemplateRegistry()
     assert reg.has("number_line_plot")

@@ -416,25 +416,28 @@ class AnnotatedEquationTemplate:
             dire = _direction_const(str(ann.get("direction", "UP")))
             col = _safe_manim_color(str(ann.get("color", "YELLOW")), "YELLOW")
             txt = str(ann.get("text", "")).strip()
+            part_i = f"part_{idx}"
             bi = f"br_{idx}"
             lines.append(
-                f"        {bi} = Brace(eq.get_part_by_tex({repr(tok)}), {dire}, color={col})\n"
+                f"        {part_i} = eq.get_part_by_tex({repr(tok)})\n"
+                f"        if {part_i} is not None:\n"
+                f"            {bi} = Brace({part_i}, {dire}, color={col})\n"
             )
             if txt:
                 lines.append(
-                    f"        tx_{idx} = Text({repr(apply_text_glyph_fallback(txt))}, font_size=22)\n"
-                    + f"        tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
+                    f"            tx_{idx} = Text({repr(apply_text_glyph_fallback(txt))}, font_size=22)\n"
+                    + f"            tx_{idx}.next_to({bi}, {dire}, buff=0.1)\n"
                     + indent_lines(
                         fit_text_mobject_lines(
                             f"tx_{idx}", max_width_expr="config.frame_width * 0.5"
                         ),
-                        8,
+                        12,
                     )
-                    + f"        self.play(GrowFromCenter({bi}), FadeIn(tx_{idx}), run_time={t_br:.3f})\n"
+                    + f"            self.play(GrowFromCenter({bi}), FadeIn(tx_{idx}), run_time={t_br:.3f})\n"
                 )
             else:
                 lines.append(
-                    f"        self.play(GrowFromCenter({bi}), run_time={t_br:.3f})\n"
+                    f"            self.play(GrowFromCenter({bi}), run_time={t_br:.3f})\n"
                 )
             idx += 1
 

@@ -75,21 +75,30 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 
 ```bash
 cd manim-video-gen
-pip install -e ".[dev]"
+uv sync --extra dev
 cp .env.example .env
 # .env에 API 키 입력
+```
+
+개발/테스트 명령은 **항상 `uv run ...`으로 실행**하세요.
+(`python`/`pytest`를 직접 실행하면 시스템 인터프리터를 타서 의존성이 달라질 수 있습니다.)
+
+## 테스트 실행
+
+```bash
+uv run pytest
 ```
 
 ## 사용
 
 ```bash
-python -m manim_video_gen "x^2 + 2x + 1 = 0 을 풀어라"
+uv run python -m manim_video_gen "x^2 + 2x + 1 = 0 을 풀어라"
 ```
 
 ## TTS 사전 검증
 
 ```bash
-python3 scripts/test_tts.py
+uv run python scripts/test_tts.py
 ```
 
 생성된 `artifacts/tts_validation/*.wav`를 청취해 한국어·수학 발음이 데모에 적합한지 판단하세요. 부적절하면 `tts/base.py`에 다른 `TTSProvider` 구현체를 추가해 교체할 수 있습니다.
@@ -97,8 +106,8 @@ python3 scripts/test_tts.py
 ## LLM 연결 확인 (선택)
 
 ```bash
-python3 scripts/test_openrouter.py
-python3 scripts/test_prompt_chain.py
+uv run python scripts/test_openrouter.py
+uv run python scripts/test_prompt_chain.py
 ```
 
 ## 렌더 회귀 점검 스크립트 (겹침/흰 네모 감시)
@@ -106,7 +115,7 @@ python3 scripts/test_prompt_chain.py
 아래 스크립트로 특정 시점 프레임을 자동 점검할 수 있습니다.
 
 ```bash
-python scripts/verify_render_regressions.py --video artifacts/final_bridge_verify.mp4 --at 48 --at 62 --at 87 --at 98 --at 167 --at 219
+uv run python scripts/verify_render_regressions.py --video artifacts/final_bridge_verify.mp4 --at 48 --at 62 --at 87 --at 98 --at 167 --at 219
 ```
 
 - `OVERLAP_SUSPECT`: 겹침 가능성이 큰 프레임
@@ -164,7 +173,7 @@ dvisvgm --version
 Windows에서는 `python3` 대신 `python`을 사용합니다:
 
 ```powershell
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### 4. .env 설정

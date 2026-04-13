@@ -100,3 +100,32 @@ def test_highlight_result_unrelated_narration_emits_warn_issue():
         i.code == "E_HIGHLIGHT_RESULT_CONTEXT_MISSING" and i.severity == "warn"
         for i in r.issues
     )
+
+
+def test_tts_text_with_spoken_parenthesis_markers_is_error():
+    s = _seg(
+        id=51,
+        visual_type="equation_transform",
+        visual_params={"from_latex": "x^2+6x+9=0", "to_latex": "(x+3)^2=0"},
+        narration="식을 정리하면 (x+3)^2 = 0이 됩니다.",
+        tts_text="식을 정리하면 괄호 열기 엑스 더하기 삼 괄호 닫기 의 제곱은 영이 됩니다.",
+    )
+    r = validate_script_consistency([s])
+    assert any(
+        i.code == "E_TTS_SPOKEN_PARENTHESIS" and i.severity == "error"
+        for i in r.issues
+    )
+
+
+def test_equation_narration_overly_phonetic_emits_warn():
+    s = _seg(
+        id=52,
+        visual_type="equation_write",
+        visual_params={"latex": "x^3 + 6x^2 + 11x + 6 = 0"},
+        narration="삼차 방정식 엑스 세제곱 더하기 육엑스 제곱 더하기 십일엑스 더하기 육은 영입니다.",
+    )
+    r = validate_script_consistency([s])
+    assert any(
+        i.code == "W_NARRATION_OVERLY_PHONETIC" and i.severity == "warn"
+        for i in r.issues
+    )

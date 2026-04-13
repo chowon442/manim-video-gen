@@ -39,7 +39,7 @@ from manim_video_gen.pipeline.diagnostics import (
 )
 from manim_video_gen.tts.factory import get_tts_provider
 from manim_video_gen.utils.file_manager import SessionWorkspace
-from manim_video_gen.utils.math_notation import polish_narration_math
+from manim_video_gen.utils.math_notation import polish_tts_text
 from manim_video_gen.video.chain_renderer import ChainRenderer
 from manim_video_gen.video.code_validator import (
     normalize_llm_manim_tex_backslashes,
@@ -499,22 +499,23 @@ def split_script_transition_tails(script: VideoScript) -> VideoScript:
     fixed: list[Segment] = []
     for i, s in enumerate(new_segments):
         fixed.append(s.model_copy(update={"id": i}))
-    return script.model_copy(update={"segments": fixed})
+    split_script = script.model_copy(update={"segments": fixed})
+    return _ensure_tts_text(split_script)
 
 
 def _ensure_tts_text(script: VideoScript) -> VideoScript:
     """Ensure every segment has a usable tts_text.
 
     If the LLM provided tts_text, apply polish as safety net.
-    Otherwise, derive tts_text from narration via polish_narration_math.
+    Otherwise, derive tts_text from narration via polish_tts_text.
     """
     updated = []
     for s in script.segments:
         tts = s.tts_text.strip() if s.tts_text else ""
         if not tts:
-            tts = polish_narration_math(s.narration)
+            tts = polish_tts_text(s.narration)
         else:
-            tts = polish_narration_math(tts)
+            tts = polish_tts_text(tts)
         updated.append(s.model_copy(update={"tts_text": tts}))
     return script.model_copy(update={"segments": updated})
 

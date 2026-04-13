@@ -20,6 +20,71 @@ OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 T = TypeVar("T", bound=BaseModel)
 
+_HEX = set("0123456789abcdefABCDEF")
+
+
+def _repair_invalid_json_string_escapes(text: str) -> str:
+    """Double backslashes that start invalid JSON escape sequences inside \"...\" only.
+
+    LLMs often emit LaTeX like \\quad inside JSON strings as a single \\ before `q`,
+    which is invalid JSON. This repairs the raw text so json.loads can succeed; the
+    parsed Python string still contains the intended LaTeX backslashes.
+    """
+    n = len(text)
+    out: list[str] = []
+    i = 0
+    in_string = False
+    while i < n:
+        c = text[i]
+        if not in_string:
+            out.append(c)
+            if c == '"':
+                in_string = True
+            i += 1
+            continue
+
+        if c == '"':
+            out.append('"')
+            in_string = False
+            i += 1
+            continue
+
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+
+        if i + 1 >= n:
+            out.append("\\\\")
+            i += 1
+            continue
+
+        nxt = text[i + 1]
+        if nxt in '"\\/bfnrt':
+            out.append("\\")
+            out.append(nxt)
+            i += 2
+            continue
+
+        if nxt == "u" and i + 6 <= n:
+            hexpart = text[i + 2 : i + 6]
+            if len(hexpart) == 4 and all(ch in _HEX for ch in hexpart):
+                out.append(text[i : i + 6])
+                i += 6
+                continue
+
+        out.append("\\\\")
+        i += 1
+
+    return "".join(out)
+
+
+def _json_loads_with_escape_repair(s: str) -> Any:
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return json.loads(_repair_invalid_json_string_escapes(s))
+
 
 def extract_json_from_text(text: str) -> Any:
     """Extract first JSON object or array from model output."""
@@ -30,7 +95,7 @@ def extract_json_from_text(text: str) -> Any:
         text = fence.group(1).strip()
 
     try:
-        return json.loads(text)
+        return _json_loads_with_escape_repair(text)
     except json.JSONDecodeError:
         pass
 
@@ -44,13 +109,13 @@ def extract_json_from_text(text: str) -> Any:
         end = text.rfind("]")
         if end == -1:
             raise ValueError("Unterminated JSON array in model output")
-        return json.loads(text[start : end + 1])
+        return _json_loads_with_escape_repair(text[start : end + 1])
 
     start = start_obj
     end = text.rfind("}")
     if end == -1:
         raise ValueError("Unterminated JSON object in model output")
-    return json.loads(text[start : end + 1])
+    return _json_loads_with_escape_repair(text[start : end + 1])
 
 
 class OpenRouterClient:
@@ -221,15 +286,34 @@ class OpenRouterClient:
         response_model: type[T],
         temperature: float = 0.2,
     ) -> T:
-        raw = await self.complete_text(
-            model=model, messages=messages, temperature=temperature
-        )
-        parsed = extract_json_from_text(raw)
-        try:
-            return response_model.model_validate(parsed)
-        except ValidationError as exc:
+        max_attempts = max(1, int(self._settings.llm_json_parse_max_attempts))
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            raw = await self.complete_text(
+                model=model, messages=messages, temperature=temperature
+            )
+            try:
+                parsed = extract_json_from_text(raw)
+                return response_model.model_validate(parsed)
+            except (json.JSONDecodeError, ValueError, ValidationError) as exc:
+                last_exc = exc
+                if attempt + 1 < max_attempts:
+                    logger.warning(
+                        "LLM JSON parse/validation failed (attempt %d/%d): %s",
+                        attempt + 1,
+                        max_attempts,
+                        exc,
+                    )
+                    continue
+        assert last_exc is not None
+        if isinstance(last_exc, ValidationError):
             raise LLMError(
                 "LLM JSON did not match schema",
                 stage="llm",
-                detail=str(exc),
-            ) from exc
+                detail=str(last_exc),
+            ) from last_exc
+        raise LLMError(
+            "LLM output was not valid JSON",
+            stage="llm",
+            detail=str(last_exc),
+        ) from last_exc

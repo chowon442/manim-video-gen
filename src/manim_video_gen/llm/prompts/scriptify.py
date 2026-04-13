@@ -25,11 +25,13 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
   ]
 }
 
+In JSON string values, every LaTeX backslash must be doubled (e.g. \\\\frac, \\\\quad) because \\ is JSON's escape character.
+
 ## narration vs tts_text (CRITICAL)
 
 These two fields serve different purposes. You MUST provide BOTH for every segment.
 
-narration — displayed as subtitles on screen. Natural Korean, may include inline math notation:
+narration — displayed as subtitles on screen. Natural Korean teacher-style explanation. Keep symbolic math readable in subtitle form:
   "x² + 6x + 9 = 0의 해를 구해봅시다."
 
 tts_text — read aloud by TTS engine. Every symbol MUST be spelled out in Korean phonetics:
@@ -43,9 +45,16 @@ tts_text — read aloud by TTS engine. Every symbol MUST be spelled out in Korea
 - 1/2 → "이분의 일",  a/b → "비 분의 에이",  √x → "루트 엑스"
 - ± → "플러스 마이너스",  π → "파이",  ∞ → "무한대"
 - Spell out digits in context: 2x → "이엑스", 6x → "육엑스", 3 → "삼"
-- Parentheses: (x+1)² → "엑스 더하기 일 전체의 제곱" or "괄호 엑스 더하기 일 괄호닫기 의 제곱"
+- Parentheses: (x+1)² → "엑스 더하기 일의 제곱" (natural spoken form)
+- NEVER say spoken marker words such as "괄호 열기", "괄호 닫기", "여는 괄호", "닫는 괄호".
 - Do NOT leave any raw LaTeX, $, or backslash commands in tts_text.
 - tts_text must sound completely natural when read aloud.
+
+### Narration style for explanation videos (teacher voice)
+- Write narration as if a math teacher explains to students: concise goal → reason → result.
+- Prefer connective teaching phrases: "먼저", "이어서", "왜냐하면", "따라서", "즉".
+- Narration is subtitle text, so keep equations/symbols visible when helpful (avoid converting the entire equation into phonetic words).
+- Do NOT copy tts_text style into narration.
 
 ## Available visual_type catalog (ONLY these strings are allowed)
 
@@ -149,11 +158,12 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
        visual_type: "equation_write"  -> screen shows only an equation; FORBIDDEN.
 
 [GOOD] narration: "이 식을 인수분해하면, (x+1)² = 0이 됩니다."
-       tts_text: "이 식을 인수분해 하면, 괄호 엑스 더하기 일 괄호닫기 의 제곱은 영이 됩니다."
+       tts_text: "이 식을 인수분해 하면, 엑스 더하기 일의 제곱은 영이 됩니다."
        visual_type: "equation_transform"
        visual_params: {"from_latex": "x^2 + 2x + 1 = 0", "to_latex": "(x+1)^2 = 0"}
 
 [BAD] tts_text: "(x+1)^2 = 0" -> raw math in tts_text; FORBIDDEN.
+[BAD] tts_text: "괄호 열기 엑스 더하기 일 괄호 닫기 의 제곱" -> unnatural spoken marker words; FORBIDDEN.
 
 LaTeX rules:
 - Prefer ASCII-only LaTeX in MathTex. Korean inside LaTeX only inside \\text{} if absolutely needed; prefer \\Rightarrow over Korean words in LaTeX.

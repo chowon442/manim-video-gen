@@ -43,6 +43,15 @@ class Settings(BaseSettings):
         validation_alias="MANIM_VIDEO_GEN_OPENROUTER_RETRY_MAX_SECONDS",
         description="Maximum backoff seconds for OpenRouter retries.",
     )
+    llm_json_parse_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        validation_alias="MANIM_VIDEO_GEN_LLM_JSON_PARSE_MAX_ATTEMPTS",
+        description=(
+            "Max completion rounds when JSON parse or schema validation fails "
+            "(each round is a new model completion)."
+        ),
+    )
     elevenlabs_api_key: str = Field(
         default="",
         validation_alias="ELEVENLABS_API_KEY",

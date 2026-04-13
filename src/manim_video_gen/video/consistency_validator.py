@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -15,6 +16,37 @@ _RESULT_TOKENS = ("최종", "정답", "해는", "결과")
 _DEICTIC_TOKENS = ("이 식", "여기서", "위 식", "위 결과")
 _EQ_CONTEXT_TOKENS = ("함수", "정의", "두고", "놓고", "가정", "성질")
 _HIGHLIGHT_EXPLAIN_TOKENS = ("핵심", "강조", "조건", "원리", "결정", "판단")
+_SPOKEN_PARENTHESIS_TOKENS = (
+    "괄호 열기",
+    "괄호닫기",
+    "괄호 닫기",
+    "여는 괄호",
+    "닫는 괄호",
+)
+_EQUATION_VISUAL_TYPES = frozenset(
+    {
+        "equation_write",
+        "equation_transform",
+        "equation_steps",
+        "equation_derivation",
+        "highlight_result",
+        "annotated_equation",
+    }
+)
+_PHONETIC_MATH_TOKENS = (
+    "엑스",
+    "와이",
+    "제곱",
+    "세제곱",
+    "더하기",
+    "빼기",
+    "곱하기",
+    "나누기",
+    "마이너스",
+    "은 영",
+    "는 영",
+)
+_SYMBOLIC_MATH_RE = re.compile(r"[=+\-×÷^()√]|[xXyYzZ][²³^]?|[0-9]+[xXyYzZ]")
 
 
 @dataclass(slots=True)
@@ -55,11 +87,32 @@ def _contains_equation_only_graph_claim(narration: str) -> bool:
     return True
 
 
+def _looks_overly_phonetic_math(narration: str) -> bool:
+    n = narration.strip()
+    if not n:
+        return False
+    if _SYMBOLIC_MATH_RE.search(n):
+        return False
+    hits = sum(1 for tok in _PHONETIC_MATH_TOKENS if tok in n)
+    return hits >= 3
+
+
 def _segment_issues(seg: Segment) -> list[ValidationIssue]:
     narration = (seg.narration or "").strip()
+    tts_text = (seg.tts_text or "").strip()
     vt = seg.visual_type
     vp = seg.visual_params or {}
     issues: list[ValidationIssue] = []
+
+    if _contains_any(tts_text, _SPOKEN_PARENTHESIS_TOKENS):
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                code="E_TTS_SPOKEN_PARENTHESIS",
+                message="tts_text contains spoken parenthesis markers (e.g. 괄호 열기/닫기); use natural spoken math phrasing",
+                segment_id=seg.id,
+            )
+        )
 
     if vt == "equation_write" and _contains_equation_only_graph_claim(narration):
         issues.append(
@@ -116,6 +169,16 @@ def _segment_issues(seg: Segment) -> list[ValidationIssue]:
                 severity="warn",
                 code="E_HIGHLIGHT_RESULT_CONTEXT_MISSING",
                 message="highlight_result narration should present or emphasize final result",
+                segment_id=seg.id,
+            )
+        )
+
+    if vt in _EQUATION_VISUAL_TYPES and _looks_overly_phonetic_math(narration):
+        issues.append(
+            ValidationIssue(
+                severity="warn",
+                code="W_NARRATION_OVERLY_PHONETIC",
+                message="equation narration appears overly phonetic; keep subtitle narration in readable symbolic math form",
                 segment_id=seg.id,
             )
         )

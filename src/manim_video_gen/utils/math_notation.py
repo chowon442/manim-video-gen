@@ -1,7 +1,7 @@
-"""Lightweight LaTeX-like fragments -> Korean spoken forms for TTS (narration polish).
+"""Math notation normalization helpers for narration/TTS safety nets.
 
-Applied as a safety net to tts_text. The LLM should produce good phonetic text,
-but this catches common LaTeX/symbol leaks.
+The LLM should ideally emit high-quality narration/tts_text already, but these
+helpers catch common symbol and LaTeX leaks to improve TTS robustness.
 """
 
 from __future__ import annotations
@@ -60,6 +60,34 @@ _REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\\vec\{([^}]+)\}"), r"벡터 \1"),
 ]
 
+_SPOKEN_PAREN_OPEN_RE = re.compile(r"(?:괄호\s*열기|여는\s*괄호|열린\s*괄호)")
+_SPOKEN_PAREN_CLOSE_RE = re.compile(r"(?:괄호\s*닫기|괄호닫기|닫는\s*괄호)")
+
+_TTS_VAR_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?<![A-Za-z가-힣])x(?![A-Za-z가-힣])", re.IGNORECASE), "엑스"),
+    (re.compile(r"(?<![A-Za-z가-힣])y(?![A-Za-z가-힣])", re.IGNORECASE), "와이"),
+    (re.compile(r"(?<![A-Za-z가-힣])z(?![A-Za-z가-힣])", re.IGNORECASE), "제트"),
+    (re.compile(r"(?<![A-Za-z가-힣])a(?![A-Za-z가-힣])", re.IGNORECASE), "에이"),
+    (re.compile(r"(?<![A-Za-z가-힣])b(?![A-Za-z가-힣])", re.IGNORECASE), "비"),
+    (re.compile(r"(?<![A-Za-z가-힣])m(?![A-Za-z가-힣])", re.IGNORECASE), "엠"),
+    (re.compile(r"(?<![A-Za-z가-힣])n(?![A-Za-z가-힣])", re.IGNORECASE), "엔"),
+]
+
+_TTS_SYMBOL_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\+"), " 더하기 "),
+    (re.compile(r"[×✕]"), " 곱하기 "),
+    (re.compile(r"÷"), " 나누기 "),
+    (re.compile(r"="), " 은 "),
+]
+
+
+def _strip_parenthesis_markers(text: str) -> str:
+    out = _SPOKEN_PAREN_OPEN_RE.sub(" ", text)
+    out = _SPOKEN_PAREN_CLOSE_RE.sub(" ", out)
+    out = out.replace("(", " ").replace(")", " ")
+    out = re.sub(r"\s+의\s+제곱", "의 제곱", out)
+    return re.sub(r"\s+", " ", out).strip()
+
 
 def polish_narration_math(text: str) -> str:
     """Replace common LaTeX/math fragments with Korean spoken forms for TTS.
@@ -87,5 +115,34 @@ def polish_narration_math(text: str) -> str:
     for pattern, repl in _REPLACEMENTS:
         out = pattern.sub(repl, out)
     out = re.sub(r"\\[a-zA-Z]+", " ", out)
+    out = re.sub(r"\s+", " ", out).strip()
+    return out
+
+
+def polish_tts_text(text: str) -> str:
+    """Polish tts_text into more natural spoken Korean.
+
+    Focuses on:
+    - removing spoken parenthesis markers ("괄호 열기/닫기")
+    - converting residual symbolic math into pronounceable Korean tokens
+    - keeping a readable spoken form for TTS engines
+    """
+    if not text:
+        return text
+
+    out = polish_narration_math(text)
+    out = _strip_parenthesis_markers(out)
+
+    for pattern, repl in _TTS_SYMBOL_REPLACEMENTS:
+        out = pattern.sub(repl, out)
+
+    # Binary minus first, then unary minus.
+    out = re.sub(r"(?<=[0-9A-Za-z가-힣])\s*-\s*(?=[0-9A-Za-z가-힣])", " 빼기 ", out)
+    out = re.sub(r"(^|\s)-(?=\d)", r"\1마이너스 ", out)
+
+    for pattern, repl in _TTS_VAR_REPLACEMENTS:
+        out = pattern.sub(repl, out)
+
+    out = re.sub(r"\s+의\s+제곱", "의 제곱", out)
     out = re.sub(r"\s+", " ", out).strip()
     return out

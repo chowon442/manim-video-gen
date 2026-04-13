@@ -1,7 +1,11 @@
 """extract_json_from_text 엣지 케이스 테스트."""
 
+import json
+import types
+
 import pytest
 import httpx
+from pydantic import BaseModel
 
 from manim_video_gen.config import Settings
 from manim_video_gen.llm.client import OpenRouterClient
@@ -85,6 +89,23 @@ def test_markdown_fence_with_surrounding_text():
     assert result == {"status": "ok"}
 
 
+def test_invalid_latex_escape_repaired_inside_string():
+    """\\quad in JSON must be \\quad in file; a single \\ before q is invalid JSON."""
+    bad = '{"latex_expression": "\\quad"}'
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(bad)
+    result = extract_json_from_text(bad)
+    assert result["latex_expression"] == r"\quad"
+
+
+def test_valid_json_unchanged_after_repair_path():
+    """Already valid JSON should parse identically (repair not needed)."""
+    ok = '{"latex_expression": "\\\\frac{1}{2}"}'
+    direct = json.loads(ok)
+    via = extract_json_from_text(ok)
+    assert via == direct
+
+
 @pytest.mark.asyncio
 async def test_openrouter_retries_body_error_524_once_then_succeeds(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "dummy")
@@ -126,6 +147,35 @@ async def test_openrouter_retries_body_error_524_once_then_succeeds(monkeypatch)
     )
     assert out == "ok"
     assert fake.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_complete_json_model_retries_after_validation_error(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "dummy")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_LLM_JSON_PARSE_MAX_ATTEMPTS", "3")
+    settings = Settings()
+
+    class _Model(BaseModel):
+        value: int
+
+    calls = [0]
+
+    async def fake_complete_text(_self, **_kwargs: object) -> str:
+        calls[0] += 1
+        if calls[0] == 1:
+            return '{"wrong": 1}'
+        return '{"value": 42}'
+
+    c = OpenRouterClient(settings)
+    c.complete_text = types.MethodType(fake_complete_text, c)  # type: ignore[method-assign]
+
+    out = await c.complete_json_model(
+        model="x",
+        messages=[{"role": "user", "content": "hi"}],
+        response_model=_Model,
+    )
+    assert out.value == 42
+    assert calls[0] == 2
 
 
 @pytest.mark.asyncio

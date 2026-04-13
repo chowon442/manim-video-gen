@@ -119,12 +119,15 @@ def adjust_duration_safe(code: str, target_duration: float) -> str:
         return code
 
 
-def ensure_scene_cleanup(code: str) -> str:
+def ensure_scene_cleanup(code: str, *, enabled: bool = True) -> str:
     """Ensure Segment.construct ends with cleanup (FadeOut + clear).
 
     This prevents lingering mobjects when rendered clips are stitched.
     If cleanup already exists, the code is returned unchanged.
     """
+    if not enabled:
+        return code
+
     has_clear = "self.clear()" in code
     has_fadeout = bool(
         re.search(

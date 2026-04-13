@@ -258,7 +258,7 @@ def _active_latex_after_segment(seg: Segment, prev_active: str | None) -> str | 
 class ChainRenderer:
     """Build one Manim `Segment` scene from an equation chain."""
 
-    def render_chain(self, chain: SegmentChain) -> str:
+    def render_chain(self, chain: SegmentChain, *, cleanup_enabled: bool = True) -> str:
         if not chain.segments:
             raise ValueError("empty chain")
         if len(chain.segments) != len(chain.durations):
@@ -314,9 +314,10 @@ class ChainRenderer:
             body_parts.append(comment + block)
             active_latex = _active_latex_after_segment(seg, active_latex)
 
-        body_parts.append(
-            f"        self.play(*[FadeOut(m) for m in self.mobjects], run_time={_CHAIN_FADE_OUT:.3f})\n"
-        )
+        if cleanup_enabled:
+            body_parts.append(
+                f"        self.play(*[FadeOut(m) for m in self.mobjects], run_time={_CHAIN_FADE_OUT:.3f})\n"
+            )
 
         construct_body = "".join(body_parts)
         return f"""{imports}

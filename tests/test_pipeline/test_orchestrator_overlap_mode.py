@@ -87,6 +87,13 @@ class _DummyComposer:
         return output_path
 
 
+def _make_dummy_ffprobe_duration(seconds: float):
+    def _ffprobe_duration(_path):
+        return float(seconds)
+
+    return _ffprobe_duration
+
+
 @pytest.mark.asyncio
 async def test_overlap_safe_mode_disables_chain_and_prev_state(monkeypatch):
     def _fake_render_manim_scene(**kwargs):
@@ -113,6 +120,10 @@ async def test_overlap_safe_mode_disables_chain_and_prev_state(monkeypatch):
     )
     monkeypatch.setattr(
         "manim_video_gen.pipeline.orchestrator.VideoComposer", _DummyComposer
+    )
+    monkeypatch.setattr(
+        "manim_video_gen.pipeline.orchestrator.ffprobe_duration_seconds",
+        _make_dummy_ffprobe_duration(1.0),
     )
 
     settings = get_settings().model_copy(

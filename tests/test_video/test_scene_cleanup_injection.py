@@ -44,3 +44,16 @@ class Segment(Scene):
     out = ensure_scene_cleanup(code)
     assert out.count("FadeOut(") == 1
     assert "self.clear()" in out
+
+
+def test_cleanup_can_be_disabled():
+    code = """
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        eq = MathTex("x=1")
+        self.play(Write(eq), run_time=1.0)
+"""
+    out = ensure_scene_cleanup(code, enabled=False)
+    assert out == code

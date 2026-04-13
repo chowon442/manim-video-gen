@@ -96,6 +96,19 @@ def test_chain_ends_with_mobjects_fadeout():
     assert "self.clear()" not in code
 
 
+def test_chain_cleanup_can_be_disabled():
+    s0 = Segment(
+        id=0,
+        narration="a",
+        visual_description="d",
+        visual_type="equation_write",
+        visual_params={"latex": r"x"},
+    )
+    ch = _chain((s0, 2.0))
+    code = ChainRenderer().render_chain(ch, cleanup_enabled=False)
+    assert "FadeOut(m)" not in code
+
+
 def test_equation_derivation_in_chain():
     s0 = Segment(
         id=0,

@@ -53,6 +53,13 @@ class _DummyTTS:
         return TTSResult(audio_path=output_path, duration_seconds=1.0)
 
 
+def _make_dummy_ffprobe_duration(seconds: float):
+    def _ffprobe_duration(_path):
+        return float(seconds)
+
+    return _ffprobe_duration
+
+
 def test_grouper_renderer_subtitle_roundtrip(tmp_path: Path):
     prev = [SceneObjectState(latex=r"x", position_expr="ORIGIN")]
     s0 = Segment(
@@ -134,6 +141,10 @@ async def test_consistency_error_mode_ignores_warn_only_issue(monkeypatch):
     )
     monkeypatch.setattr(
         "manim_video_gen.pipeline.orchestrator.VideoComposer", _DummyComposer
+    )
+    monkeypatch.setattr(
+        "manim_video_gen.pipeline.orchestrator.ffprobe_duration_seconds",
+        _make_dummy_ffprobe_duration(1.0),
     )
 
     settings = get_settings().model_copy(

@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from manim_video_gen.config import Settings, get_settings
 from manim_video_gen.llm.client import OpenRouterClient
@@ -44,7 +45,7 @@ from manim_video_gen.video.code_validator import (
     normalize_llm_manim_tex_backslashes,
     validate_and_test_render,
 )
-from manim_video_gen.video.composer import VideoComposer
+from manim_video_gen.video.composer import VideoComposer, ffprobe_duration_seconds
 from manim_video_gen.video.duration_adjuster import adjust_duration_safe
 from manim_video_gen.video.duration_adjuster import ensure_scene_cleanup
 from manim_video_gen.video.latex_korean import wrap_korean_text_runs
@@ -72,62 +73,157 @@ _GRAPH_TRANSITION_TAILS = (
     "그래프로 확인합니다",
 )
 
-_BRIDGE_DURATION_SECONDS = 0.65
+_BRIDGE_DURATION_MIN_SECONDS = 0.6
+_BRIDGE_DURATION_MAX_SECONDS = 1.2
+_BRIDGE_AUDIO_PAD_SECONDS = 0.03
+_BRIDGE_MIN_TOKEN_OVERLAP = 0.18
+_BRIDGE_ALLOWED_TYPES = frozenset(
+    {
+        "equation_write",
+        "equation_transform",
+        "equation_steps",
+        "equation_derivation",
+        "highlight_result",
+        "annotated_equation",
+    }
+)
+_BRIDGE_TOKEN_RE = re.compile(r"\\[A-Za-z]+|[A-Za-z]+(?:_[0-9]+)?")
+_BRIDGE_TOKEN_STOPWORDS = frozenset(
+    {
+        "frac",
+        "left",
+        "right",
+        "begin",
+        "end",
+        "quad",
+        "qquad",
+        "text",
+        "cdot",
+        "times",
+        "mathbf",
+        "mathrm",
+        "operatorname",
+    }
+)
 
 
-def _segment_bridge_latex(seg: Segment) -> str | None:
-    """Return a representative latex string for bridge transforms.
+def _pick_step_latex(item: Any) -> str | None:
+    if isinstance(item, str):
+        s = item.strip()
+        return s if s else None
+    if isinstance(item, dict):
+        s = str(item.get("latex", "")).strip()
+        return s if s else None
+    return None
 
-    Conservative extraction: only equation-like visual types yield a bridge token.
+
+def _segment_bridge_latex(
+    seg: Segment,
+    *,
+    anchor: Literal["first", "last"] = "last",
+) -> str | None:
+    """Return an anchor latex string for semantic bridge generation.
+
+    - left boundary anchor uses "last"
+    - right boundary anchor uses "first"
     """
     vp = seg.visual_params or {}
     vt = seg.visual_type
+    if vt not in _BRIDGE_ALLOWED_TYPES:
+        return None
 
-    if vt == "equation_write":
+    if vt in {"equation_write", "highlight_result", "annotated_equation"}:
         s = str(vp.get("latex", "")).strip()
         return wrap_korean_text_runs(s) if s else None
 
     if vt == "equation_transform":
-        s = str(vp.get("to_latex") or vp.get("from_latex") or "").strip()
+        if anchor == "first":
+            s = str(vp.get("from_latex") or vp.get("to_latex") or "").strip()
+        else:
+            s = str(vp.get("to_latex") or vp.get("from_latex") or "").strip()
         return wrap_korean_text_runs(s) if s else None
 
-    if vt == "equation_steps":
+    if vt in {"equation_steps", "equation_derivation"}:
         steps = vp.get("steps") or []
-        if isinstance(steps, list) and steps:
-            last = steps[-1]
-            if isinstance(last, str):
-                s = last.strip()
-                return wrap_korean_text_runs(s) if s else None
-            if isinstance(last, dict):
-                s = str(last.get("latex", "")).strip()
-                return wrap_korean_text_runs(s) if s else None
-        return None
-
-    if vt == "equation_derivation":
-        steps = vp.get("steps") or []
-        if isinstance(steps, list) and steps:
-            last = steps[-1]
-            if isinstance(last, dict):
-                s = str(last.get("latex", "")).strip()
-                return wrap_korean_text_runs(s) if s else None
-            if isinstance(last, str):
-                s = last.strip()
-                return wrap_korean_text_runs(s) if s else None
-        return None
-
-    if vt == "highlight_result":
-        s = str(vp.get("latex", "")).strip()
-        return wrap_korean_text_runs(s) if s else None
-
-    if vt == "annotated_equation":
-        s = str(vp.get("latex", "")).strip()
-        return wrap_korean_text_runs(s) if s else None
+        if not isinstance(steps, list) or not steps:
+            return None
+        candidate = steps[0] if anchor == "first" else steps[-1]
+        picked = _pick_step_latex(candidate)
+        return wrap_korean_text_runs(picked) if picked else None
 
     return None
 
 
 def _norm_latex_key(s: str) -> str:
     return "".join(str(s).split())
+
+
+def _bridge_symbol_tokens(latex: str) -> set[str]:
+    raw = _BRIDGE_TOKEN_RE.findall(latex)
+    out: set[str] = set()
+    for tok in raw:
+        t = tok.lstrip("\\").lower().strip()
+        if not t or t in _BRIDGE_TOKEN_STOPWORDS:
+            continue
+        out.add(t)
+    return out
+
+
+def _bridge_pair_confident(left_latex: str, right_latex: str) -> bool:
+    lt = _bridge_symbol_tokens(left_latex)
+    rt = _bridge_symbol_tokens(right_latex)
+    if not lt or not rt:
+        return False
+    overlap = len(lt.intersection(rt)) / float(max(len(lt), len(rt)))
+    return overlap >= _BRIDGE_MIN_TOKEN_OVERLAP
+
+
+def _adaptive_bridge_duration_seconds(left_latex: str, right_latex: str) -> float:
+    left_tokens = _bridge_symbol_tokens(left_latex)
+    right_tokens = _bridge_symbol_tokens(right_latex)
+    sym_diff = len(left_tokens.symmetric_difference(right_tokens))
+    raw_len = max(len(_norm_latex_key(left_latex)), len(_norm_latex_key(right_latex)))
+    est = 0.6 + (0.04 * float(sym_diff)) + (0.002 * float(raw_len))
+    est = max(_BRIDGE_DURATION_MIN_SECONDS, min(_BRIDGE_DURATION_MAX_SECONDS, est))
+    return round(est, 3)
+
+
+def _build_bridge_spec_for_boundary(
+    left_seg: Segment,
+    right_seg: Segment,
+) -> dict[str, Any] | None:
+    left_latex = _segment_bridge_latex(left_seg, anchor="last")
+    right_latex = _segment_bridge_latex(right_seg, anchor="first")
+    if not left_latex or not right_latex:
+        return None
+    if _norm_latex_key(left_latex) == _norm_latex_key(right_latex):
+        return None
+    if not _bridge_pair_confident(left_latex, right_latex):
+        return None
+    return {
+        "from_segment_id": left_seg.id,
+        "to_segment_id": right_seg.id,
+        "from_latex": left_latex,
+        "to_latex": right_latex,
+        "duration": _adaptive_bridge_duration_seconds(left_latex, right_latex),
+        "fallback": "hard_cut",
+    }
+
+
+def _build_bridge_specs_for_chains(chains: list[SegmentChain]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    if len(chains) < 2:
+        return out
+    for left_chain, right_chain in zip(chains, chains[1:]):
+        if not left_chain.segments or not right_chain.segments:
+            continue
+        spec = _build_bridge_spec_for_boundary(
+            left_chain.segments[-1],
+            right_chain.segments[0],
+        )
+        if spec is not None:
+            out.append(spec)
+    return out
 
 
 def _build_bridge_specs_for_processed(
@@ -172,22 +268,10 @@ def _build_bridge_specs_for_processed(
 
         left_seg = left_group[-1].segment
         right_seg = right_group[0].segment
-        left_latex = _segment_bridge_latex(left_seg)
-        right_latex = _segment_bridge_latex(right_seg)
-        if not left_latex or not right_latex:
+        spec = _build_bridge_spec_for_boundary(left_seg, right_seg)
+        if spec is None:
             continue
-        if _norm_latex_key(left_latex) == _norm_latex_key(right_latex):
-            continue
-        out.append(
-            {
-                "from_segment_id": left_seg.id,
-                "to_segment_id": right_seg.id,
-                "from_latex": left_latex,
-                "to_latex": right_latex,
-                "duration": _BRIDGE_DURATION_SECONDS,
-                "fallback": "hard_cut",
-            }
-        )
+        out.append(spec)
     return out
 
 
@@ -201,7 +285,7 @@ async def _render_bridge_segment(
     from_latex: str,
     to_latex: str,
     duration: float,
-) -> tuple[Path, str]:
+) -> tuple[Path, str, Path, Path]:
     """Render a short semantic bridge clip (equation transform)."""
     code = EquationTransformTemplate.render_code(
         params={"from_latex": from_latex, "to_latex": to_latex},
@@ -239,7 +323,65 @@ async def _render_bridge_segment(
         subtitle_path=None,
         subtitle_safe_area_px=settings.subtitle_safe_area_px,
     )
-    return merged, code
+    return merged, code, video_only, silent_audio
+
+
+async def _render_bridge_segment_with_duration_guard(
+    *,
+    workspace: SessionWorkspace,
+    composer: VideoComposer,
+    settings: Settings,
+    from_segment_id: int,
+    to_segment_id: int,
+    from_latex: str,
+    to_latex: str,
+    duration: float,
+) -> tuple[Path, str, float]:
+    """Render bridge and ensure audio is never shorter than needed timeline.
+
+    Returns (merged_path, code, final_duration_seconds).
+    """
+    target = max(float(duration), _BRIDGE_DURATION_MIN_SECONDS)
+    merged, code, video_only, silent_audio = await _render_bridge_segment(
+        workspace=workspace,
+        composer=composer,
+        settings=settings,
+        from_segment_id=from_segment_id,
+        to_segment_id=to_segment_id,
+        from_latex=from_latex,
+        to_latex=to_latex,
+        duration=target,
+    )
+
+    video_dur = await asyncio.to_thread(ffprobe_duration_seconds, video_only)
+    audio_dur = await asyncio.to_thread(ffprobe_duration_seconds, silent_audio)
+    needed = max(target, float(video_dur)) + _BRIDGE_AUDIO_PAD_SECONDS
+
+    if audio_dur + 1e-3 < needed:
+        logger.info(
+            "bridge %d->%d extending silent audio %.3fs -> %.3fs (video=%.3fs)",
+            from_segment_id,
+            to_segment_id,
+            audio_dur,
+            needed,
+            video_dur,
+        )
+        await asyncio.to_thread(
+            composer.generate_silence_audio,
+            duration=needed,
+            output_path=silent_audio,
+        )
+        await asyncio.to_thread(
+            composer.merge_segment,
+            video_path=video_only,
+            audio_path=silent_audio,
+            output_path=merged,
+            subtitle_path=None,
+            subtitle_safe_area_px=settings.subtitle_safe_area_px,
+        )
+
+    final_dur = await asyncio.to_thread(ffprobe_duration_seconds, merged)
+    return merged, code, float(final_dur)
 
 
 def _requires_custom_scene(seg: Segment) -> bool:
@@ -552,6 +694,7 @@ async def _render_standalone_segment(
     client: OpenRouterClient,
     composer: VideoComposer,
     settings: Settings,
+    cleanup_enabled: bool = True,
 ) -> tuple[Path, Path, str, int]:
     """Returns (merged_mp4_path, video_only_path, manim_code, llm_manim_retries)."""
     if settings.disable_prev_scene_state and seg.prev_scene_state is not None:
@@ -571,7 +714,7 @@ async def _render_standalone_segment(
         code = normalize_llm_manim_tex_backslashes(code)
         code = inject_cjk_if_needed(code)
         code = adjust_duration_safe(code, duration)
-        code = ensure_scene_cleanup(code)
+        code = ensure_scene_cleanup(code, enabled=cleanup_enabled)
     else:
         code, n_try = await _llm_manim_with_retries_counted(
             client=client,
@@ -582,7 +725,7 @@ async def _render_standalone_segment(
             stem=f"scene_{seg.id:02d}",
         )
         llm_retries = n_try
-        code = ensure_scene_cleanup(code)
+        code = ensure_scene_cleanup(code, enabled=cleanup_enabled)
 
     scene_path = workspace.root / f"scene_{seg.id:02d}.py"
     video_only = await asyncio.to_thread(
@@ -629,6 +772,7 @@ async def _render_equation_chain(
     settings: Settings,
     client: OpenRouterClient,
     registry: TemplateRegistry,
+    cleanup_enabled: bool = True,
 ) -> tuple[Path, str, int]:
     """Render merged equation chain; fallback to per-segment on failure."""
     if settings.disable_equation_chain:
@@ -652,6 +796,7 @@ async def _render_equation_chain(
                 client=client,
                 composer=composer,
                 settings=settings,
+                cleanup_enabled=cleanup_enabled,
             )
             parts.append(p)
             codes.append(c)
@@ -666,11 +811,11 @@ async def _render_equation_chain(
     stem = f"chain_{first_id:02d}"
 
     try:
-        code = ChainRenderer().render_chain(chain)
+        code = ChainRenderer().render_chain(chain, cleanup_enabled=cleanup_enabled)
         code = normalize_llm_manim_tex_backslashes(code)
         code = inject_cjk_if_needed(code)
         code = adjust_duration_safe(code, chain.total_duration)
-        code = ensure_scene_cleanup(code)
+        code = ensure_scene_cleanup(code, enabled=cleanup_enabled)
 
         scene_path = workspace.root / f"{stem}.py"
         video_only = await asyncio.to_thread(
@@ -739,6 +884,7 @@ async def _render_equation_chain(
                 client=client,
                 composer=composer,
                 settings=settings,
+                cleanup_enabled=cleanup_enabled,
             )
             parts.append(p)
             codes.append(c)
@@ -845,9 +991,28 @@ async def generate_video(
                 tts_results.append(tts_result)
 
             chains = group_into_chains(script.segments, tts_results)
+            bridge_specs: list[dict[str, Any]] = []
+            bridge_spec_by_pair: dict[tuple[int, int], dict[str, Any]] = {}
+            bridge_left_segment_ids: set[int] = set()
+            if settings.scene_bridge_enabled and len(chains) >= 2:
+                bridge_specs = _build_bridge_specs_for_chains(chains)
+                bridge_spec_by_pair = {
+                    (int(s["from_segment_id"]), int(s["to_segment_id"])): s
+                    for s in bridge_specs
+                }
+                bridge_left_segment_ids = {
+                    int(s["from_segment_id"]) for s in bridge_specs
+                }
+
             merged_paths: list[Path] = []
+            path_boundary_ids: dict[str, tuple[int, int]] = {}
 
             for chain in chains:
+                chain_cleanup_enabled = (
+                    chain.segments[-1].id not in bridge_left_segment_ids
+                    if chain.segments
+                    else True
+                )
                 if chain.is_equation_chain:
                     for seg in chain.segments:
                         _emit_progress(
@@ -866,9 +1031,14 @@ async def generate_video(
                         settings=settings,
                         client=client,
                         registry=registry,
+                        cleanup_enabled=chain_cleanup_enabled,
                     )
                     llm_retries_total += n_try
                     merged_paths.append(merged_path)
+                    path_boundary_ids[str(Path(merged_path).resolve())] = (
+                        chain.segments[0].id,
+                        chain.segments[-1].id,
+                    )
                     for seg, tts_res in zip(
                         chain.segments, chain.tts_results, strict=True
                     ):
@@ -916,9 +1086,14 @@ async def generate_video(
                             client=client,
                             composer=composer,
                             settings=settings,
+                            cleanup_enabled=chain_cleanup_enabled,
                         )
                         llm_retries_total += n_try
                         merged_paths.append(merged_path)
+                        path_boundary_ids[str(Path(merged_path).resolve())] = (
+                            seg.id,
+                            seg.id,
+                        )
                         processed.append(
                             ProcessedSegment(
                                 segment=seg,
@@ -936,66 +1111,51 @@ async def generate_video(
                         )
 
             if settings.scene_bridge_enabled and len(processed) >= 2:
-                bridge_specs = _build_bridge_specs_for_processed(
-                    processed,
-                    merged_paths=merged_paths,
-                )
                 if bridge_specs:
                     i = 0
                     while i < len(merged_paths) - 1:
                         left_path = merged_paths[i]
                         right_path = merged_paths[i + 1]
-                        left_id = next(
-                            (
-                                ps.segment.id
-                                for ps in processed
-                                if ps.merged_segment_path is not None
-                                and Path(ps.merged_segment_path) == left_path
-                            ),
-                            None,
+                        left_boundary = path_boundary_ids.get(
+                            str(Path(left_path).resolve())
                         )
-                        right_id = next(
-                            (
-                                ps.segment.id
-                                for ps in processed
-                                if ps.merged_segment_path is not None
-                                and Path(ps.merged_segment_path) == right_path
-                            ),
-                            None,
+                        right_boundary = path_boundary_ids.get(
+                            str(Path(right_path).resolve())
                         )
+                        left_id = left_boundary[1] if left_boundary else None
+                        right_id = right_boundary[0] if right_boundary else None
                         if left_id is None or right_id is None:
                             i += 1
                             continue
 
-                        spec = next(
-                            (
-                                s
-                                for s in bridge_specs
-                                if s["from_segment_id"] == left_id
-                                and s["to_segment_id"] == right_id
-                            ),
-                            None,
-                        )
+                        spec = bridge_spec_by_pair.get((left_id, right_id))
                         if spec is None:
                             i += 1
                             continue
 
                         try:
-                            bridge_path, bridge_code = await _render_bridge_segment(
-                                workspace=workspace,
-                                composer=composer,
-                                settings=settings,
-                                from_segment_id=left_id,
-                                to_segment_id=right_id,
-                                from_latex=str(spec["from_latex"]),
-                                to_latex=str(spec["to_latex"]),
-                                duration=float(spec["duration"]),
+                            bridge_path, bridge_code, bridge_duration = (
+                                await _render_bridge_segment_with_duration_guard(
+                                    workspace=workspace,
+                                    composer=composer,
+                                    settings=settings,
+                                    from_segment_id=left_id,
+                                    to_segment_id=right_id,
+                                    from_latex=str(spec["from_latex"]),
+                                    to_latex=str(spec["to_latex"]),
+                                    duration=float(spec["duration"]),
+                                )
                             )
                             merged_paths.insert(i + 1, bridge_path)
+                            bridge_seg_id = 100000 + left_id * 100 + right_id
+                            path_boundary_ids[str(Path(bridge_path).resolve())] = (
+                                bridge_seg_id,
+                                bridge_seg_id,
+                            )
                             processed.append(
                                 ProcessedSegment(
                                     segment=Segment(
-                                        id=100000 + left_id * 100 + right_id,
+                                        id=bridge_seg_id,
                                         narration="",
                                         tts_text="",
                                         visual_description="semantic bridge",
@@ -1009,7 +1169,7 @@ async def generate_video(
                                     tts=TTSResult(
                                         audio_path=workspace.root
                                         / f"bridge_{left_id:02d}_{right_id:02d}.m4a",
-                                        duration_seconds=float(spec["duration"]),
+                                        duration_seconds=float(bridge_duration),
                                     ),
                                     manim_code=bridge_code,
                                     video_path=None,
@@ -1017,9 +1177,10 @@ async def generate_video(
                                 )
                             )
                             logger.info(
-                                "inserted semantic bridge between seg %d -> %d",
+                                "inserted semantic bridge between seg %d -> %d (dur=%.3fs)",
                                 left_id,
                                 right_id,
+                                bridge_duration,
                             )
                             i += 2
                         except Exception as exc:

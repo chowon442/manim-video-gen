@@ -237,6 +237,41 @@ class Settings(BaseSettings):
         description="Maximum additional scriptify attempts for consistency auto-repair.",
     )
 
+    script_quality_enabled: bool = Field(
+        default=False,
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_ENABLED",
+        description="Enable script-level quality guard (score + minimal-change repair loop).",
+    )
+    script_quality_profile: Literal["quality_first", "balanced", "stable"] = Field(
+        default="quality_first",
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_PROFILE",
+        description="Quality scoring profile. quality_first emphasizes explanation quality.",
+    )
+    script_quality_min_total: float = Field(
+        default=0.82,
+        ge=0.0,
+        le=1.0,
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_MIN_TOTAL",
+        description="Minimum acceptable script quality score (0~1).",
+    )
+    script_quality_max_attempts: int = Field(
+        default=2,
+        ge=0,
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_MAX_ATTEMPTS",
+        description="Maximum additional script repair attempts for quality guard.",
+    )
+    script_quality_max_segments_per_attempt: int = Field(
+        default=2,
+        ge=0,
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_MAX_SEGMENTS_PER_ATTEMPT",
+        description="Maximum number of segment IDs that may change per quality-repair attempt.",
+    )
+    script_quality_fail_on_soft_after_max: bool = Field(
+        default=False,
+        validation_alias="MANIM_VIDEO_GEN_SCRIPT_QUALITY_FAIL_ON_SOFT_AFTER_MAX",
+        description="If true, fail pipeline when soft quality issues remain after max attempts.",
+    )
+
     diagnostic_dump: bool = Field(
         default=False,
         validation_alias="MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP",

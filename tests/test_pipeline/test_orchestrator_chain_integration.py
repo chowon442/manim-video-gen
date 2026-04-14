@@ -150,6 +150,7 @@ async def test_consistency_error_mode_ignores_warn_only_issue(monkeypatch):
     settings = get_settings().model_copy(
         update={
             "consistency_mode": "error",
+            "script_quality_enabled": False,
             "burn_subtitles": False,
             "diagnostic_dump": False,
             "keep_workspace": True,

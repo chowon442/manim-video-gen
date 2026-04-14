@@ -26,6 +26,7 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 - 겹침 방지 안전 모드(`MANIM_VIDEO_GEN_DISABLE_EQUATION_CHAIN`, `MANIM_VIDEO_GEN_DISABLE_PREV_SCENE_STATE`)
 - 나레이션-시각화 정합성 검사(`MANIM_VIDEO_GEN_CONSISTENCY_MODE=off|warn|error`)
 - error 모드 자동복구(`MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR`, `MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR_MAX_ATTEMPTS`)
+- 대본 품질 가드(`MANIM_VIDEO_GEN_SCRIPT_QUALITY_ENABLED`, `..._PROFILE`, `..._MIN_TOTAL`, `..._MAX_ATTEMPTS`, `..._MAX_SEGMENTS_PER_ATTEMPT`, `..._FAIL_ON_SOFT_AFTER_MAX`)
 - 사후 분석 덤프(`MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP=true`) 및 워크스페이스 유지(`MANIM_VIDEO_GEN_KEEP_WORKSPACE=true`)
 
 환경변수 의미 요약:
@@ -56,6 +57,22 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
   - `false`: `error` 발견 즉시 중단
 - `MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR_MAX_ATTEMPTS`
   - 자동 보정 재시도 횟수(정수, 기본 2)
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_ENABLED`
+  - `true`: scriptify 이후 대본 품질 스코어링 + 최소수정 보정 루프 활성화
+  - `false`(기본): 기존 동작 유지
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_PROFILE`
+  - `quality_first`(기본): 설명 흐름/교사 말투를 더 크게 반영
+  - `balanced`: 설명/렌더 안정성 균형
+  - `stable`: 렌더 안정성 가중치 큼
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_MIN_TOTAL`
+  - 허용 최소 품질 점수(0~1, 기본 0.82)
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_MAX_ATTEMPTS`
+  - 품질 보정 재시도 횟수(기본 2)
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_MAX_SEGMENTS_PER_ATTEMPT`
+  - 시도 1회에서 수정 허용되는 세그먼트 개수 상한(기본 2)
+- `MANIM_VIDEO_GEN_SCRIPT_QUALITY_FAIL_ON_SOFT_AFTER_MAX`
+  - `true`: soft 이슈/점수 미달이 남으면 fail-fast
+  - `false`(기본): best-effort 결과로 진행
 - `MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP`
   - `artifacts/runs/<run_id>/`에 script/segments/scene code/ass/summary 저장
 - `MANIM_VIDEO_GEN_KEEP_WORKSPACE`

@@ -11,3 +11,13 @@ def test_transition_defaults_prefer_simple_non_bridge_flow(monkeypatch):
     assert s.crossfade_duration == 0.2
     assert s.scene_bridge_enabled is False
     assert s.inter_scene_gap_seconds == 0.0
+
+
+def test_script_quality_guard_defaults(monkeypatch):
+    monkeypatch.delenv("MANIM_VIDEO_GEN_SCRIPT_QUALITY_ENABLED", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_SCRIPT_QUALITY_PROFILE", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_SCRIPT_QUALITY_MIN_TOTAL", raising=False)
+    s = Settings()
+    assert s.script_quality_enabled is False
+    assert s.script_quality_profile == "quality_first"
+    assert s.script_quality_min_total == 0.82

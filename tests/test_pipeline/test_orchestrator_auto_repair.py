@@ -127,6 +127,7 @@ async def test_error_mode_auto_repairs_script_then_continues(monkeypatch):
             "consistency_mode": "error",
             "consistency_auto_repair": True,
             "consistency_auto_repair_max_attempts": 2,
+            "script_quality_enabled": False,
             "burn_subtitles": False,
             "diagnostic_dump": False,
             "keep_workspace": True,

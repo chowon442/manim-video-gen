@@ -46,6 +46,7 @@ def test_dump_generation_diagnostics_writes_core_files(tmp_path: Path):
         ),
         script=VideoScript(title="v", segments=[seg]),
         consistency_report=None,
+        script_quality_report=None,
         processed_segments=processed,
         llm_manim_retries=0,
         elapsed_seconds=3.4,
@@ -59,5 +60,6 @@ def test_dump_generation_diagnostics_writes_core_files(tmp_path: Path):
     assert (run_dir / "script.json").is_file()
     assert (run_dir / "segments.json").is_file()
     assert (run_dir / "summary.json").is_file()
+    assert (run_dir / "script_quality_report.json").is_file()
     assert (run_dir / "ass" / "seg_00.ass").is_file()
     assert (run_dir / "segment_code" / "segment_00.py").is_file()

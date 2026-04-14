@@ -51,6 +51,10 @@ from manim_video_gen.video.duration_adjuster import ensure_scene_cleanup
 from manim_video_gen.video.latex_korean import wrap_korean_text_runs
 from manim_video_gen.video.manim_renderer import render_manim_scene
 from manim_video_gen.video.consistency_validator import validate_script_consistency
+from manim_video_gen.video.script_quality import (
+    ScriptQualityReport,
+    evaluate_script_quality,
+)
 from manim_video_gen.video.subtitle import (
     generate_ass_subtitle,
     generate_chain_ass_subtitle,
@@ -561,6 +565,85 @@ def _consistency_error_prompt(
     )
 
 
+def _changed_segment_ids(
+    prev_script: VideoScript, next_script: VideoScript
+) -> set[int]:
+    prev_by_id = {int(s.id): s.model_dump() for s in prev_script.segments}
+    next_by_id = {int(s.id): s.model_dump() for s in next_script.segments}
+    changed: set[int] = set()
+    for sid in set(prev_by_id) | set(next_by_id):
+        if prev_by_id.get(sid) != next_by_id.get(sid):
+            changed.add(int(sid))
+    return changed
+
+
+def _script_quality_repair_targets(
+    report: ScriptQualityReport,
+    *,
+    max_segments: int,
+    current_script: VideoScript,
+) -> list[int]:
+    ordered: list[int] = []
+    for issue in [*report.hard_failures, *report.soft_issues]:
+        sid = int(issue.segment_id)
+        if sid < 0 or sid in ordered:
+            continue
+        ordered.append(sid)
+
+    # Global-structure warnings (e.g., low visual variety) often need touching
+    # more than one spot while still keeping changes minimal.
+    if any(i.code == "W_VISUAL_VARIETY_LOW" for i in report.soft_issues):
+        if current_script.segments:
+            edge_ids = [
+                int(current_script.segments[0].id),
+                int(current_script.segments[-1].id),
+            ]
+            for sid in edge_ids:
+                if sid not in ordered:
+                    ordered.append(sid)
+
+    if max_segments <= 0:
+        return []
+    return ordered[:max_segments]
+
+
+def _script_quality_error_prompt(
+    *,
+    plan: SolutionPlan,
+    previous_script: VideoScript,
+    quality_report: ScriptQualityReport,
+    allowed_segment_ids: list[int],
+) -> str:
+    lines: list[str] = []
+    for issue in quality_report.hard_failures:
+        lines.append(
+            f"- [HARD] seg={issue.segment_id} code={issue.code}: {issue.message}"
+        )
+    for issue in quality_report.soft_issues:
+        lines.append(
+            f"- [SOFT] seg={issue.segment_id} code={issue.code}: {issue.message}"
+        )
+    issue_text = "\n".join(lines) if lines else "- (none)"
+    target_text = ", ".join(str(i) for i in allowed_segment_ids)
+
+    return (
+        "기존 script JSON의 설명 품질과 렌더 가능성을 높이도록 최소 수정하세요.\n"
+        "중요 규칙:\n"
+        f"1) 수정 가능한 세그먼트 id는 [{target_text}] 뿐입니다.\n"
+        "2) 위 id 외의 세그먼트는 내용/순서를 바꾸지 마세요.\n"
+        "3) schema는 그대로 유지하고 id는 유지하세요.\n"
+        "4) 설명력(교사 말투, 연결어, 결론)을 유지/개선하면서 시각 타입 불일치를 해결하세요.\n"
+        "5) visual_scene 남용 금지, 템플릿 visual_type 우선.\n"
+        "\n"
+        "[Detected quality issues]\n"
+        f"{issue_text}\n\n"
+        "[Original script JSON]\n"
+        f"{json.dumps(previous_script.model_dump(), ensure_ascii=False, indent=2)}\n\n"
+        "[Original solution plan]\n"
+        f"{scriptify_user_prompt(plan)}"
+    )
+
+
 async def _scriptify_with_consistency_repair(
     *,
     client: OpenRouterClient,
@@ -621,6 +704,146 @@ async def _scriptify_with_consistency_repair(
         report = new_report
 
     return script, report
+
+
+async def _scriptify_with_quality_guard(
+    *,
+    client: OpenRouterClient,
+    settings: Settings,
+    plan: SolutionPlan,
+) -> tuple[VideoScript, Any | None, ScriptQualityReport | None]:
+    """Run scriptify with consistency repair, then optional quality-guard repair."""
+    script, consistency_report = await _scriptify_with_consistency_repair(
+        client=client,
+        settings=settings,
+        plan=plan,
+    )
+    script = split_script_transition_tails(script)
+
+    if settings.consistency_mode != "off":
+        consistency_report = validate_script_consistency(script.segments)
+    else:
+        consistency_report = None
+
+    if not settings.script_quality_enabled:
+        return script, consistency_report, None
+
+    min_total = float(settings.script_quality_min_total)
+    max_attempts = max(0, int(settings.script_quality_max_attempts))
+    max_segments = max(0, int(settings.script_quality_max_segments_per_attempt))
+
+    best_script = script
+    best_consistency = consistency_report
+    best_quality = evaluate_script_quality(
+        best_script.segments,
+        profile=settings.script_quality_profile,
+    )
+
+    def _needs_repair(q: ScriptQualityReport) -> bool:
+        if q.hard_failures:
+            return True
+        if q.total_score < min_total:
+            return True
+        if settings.script_quality_fail_on_soft_after_max and q.soft_issues:
+            return True
+        return False
+
+    if not _needs_repair(best_quality):
+        return best_script, best_consistency, best_quality
+
+    current_script = best_script
+    current_quality = best_quality
+
+    for attempt in range(1, max_attempts + 1):
+        targets = _script_quality_repair_targets(
+            current_quality,
+            max_segments=max_segments,
+            current_script=current_script,
+        )
+        if not targets:
+            break
+        logger.warning(
+            "quality-guard repair attempt %d/%d targets=%s score=%.3f",
+            attempt,
+            max_attempts,
+            targets,
+            current_quality.total_score,
+        )
+
+        repaired = await client.complete_json_model(
+            model=settings.model_script,
+            messages=[
+                {"role": "system", "content": SCRIPTIFY_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": _script_quality_error_prompt(
+                        plan=plan,
+                        previous_script=current_script,
+                        quality_report=current_quality,
+                        allowed_segment_ids=targets,
+                    ),
+                },
+            ],
+            response_model=VideoScript,
+        )
+
+        repaired = _ensure_tts_text(repaired)
+        repaired = split_script_transition_tails(repaired)
+
+        changed_ids = _changed_segment_ids(current_script, repaired)
+        if len(changed_ids) > max_segments:
+            logger.warning(
+                "quality-guard rejected candidate: changed_ids=%s exceeds max=%d",
+                sorted(changed_ids),
+                max_segments,
+            )
+            continue
+        if any(sid not in targets for sid in changed_ids):
+            logger.warning(
+                "quality-guard rejected candidate: changed_ids=%s outside targets=%s",
+                sorted(changed_ids),
+                targets,
+            )
+            continue
+
+        repaired_consistency = (
+            validate_script_consistency(repaired.segments)
+            if settings.consistency_mode != "off"
+            else None
+        )
+        repaired_quality = evaluate_script_quality(
+            repaired.segments,
+            profile=settings.script_quality_profile,
+        )
+
+        current_script = repaired
+        current_quality = repaired_quality
+
+        if repaired_quality.total_score > best_quality.total_score:
+            best_script = repaired
+            best_quality = repaired_quality
+            best_consistency = repaired_consistency
+
+        if not _needs_repair(repaired_quality):
+            return repaired, repaired_consistency, repaired_quality
+
+    if settings.script_quality_fail_on_soft_after_max:
+        if best_quality.hard_failures:
+            first = best_quality.hard_failures[0]
+            raise ValueError(
+                f"Script quality hard failure remains: [{first.code}] seg={first.segment_id} {first.message}"
+            )
+        if best_quality.total_score < min_total:
+            raise ValueError(
+                f"Script quality score below threshold: score={best_quality.total_score:.3f} < {min_total:.3f}"
+            )
+        if best_quality.soft_issues:
+            first = best_quality.soft_issues[0]
+            raise ValueError(
+                f"Script quality soft issue remains: [{first.code}] seg={first.segment_id} {first.message}"
+            )
+
+    return best_script, best_consistency, best_quality
 
 
 async def _llm_manim_with_retries_counted(
@@ -930,6 +1153,7 @@ async def generate_video(
     plan: SolutionPlan | None = None
     script: VideoScript | None = None
     consistency_report = None
+    script_quality_report: ScriptQualityReport | None = None
     processed: list[ProcessedSegment] = []
     final_path: Path | None = None
 
@@ -954,12 +1178,15 @@ async def generate_video(
                 on_progress, {"stage": "scriptify", "message": "대본 생성 중"}
             )
             t_script = time.perf_counter()
-            script, consistency_report = await _scriptify_with_consistency_repair(
+            (
+                script,
+                consistency_report,
+                script_quality_report,
+            ) = await _scriptify_with_quality_guard(
                 client=client,
                 settings=settings,
                 plan=plan,
             )
-            script = split_script_transition_tails(script)
             logger.info("scriptify step done in %.2fs", time.perf_counter() - t_script)
 
             if consistency_report and consistency_report.issues:
@@ -1256,6 +1483,7 @@ async def generate_video(
                 plan=plan,
                 script=script,
                 consistency_report=consistency_report,
+                script_quality_report=script_quality_report,
                 processed_segments=processed,
                 llm_manim_retries=llm_retries_total,
                 elapsed_seconds=time.perf_counter() - t0,
@@ -1274,6 +1502,7 @@ async def generate_video(
                 plan=plan,
                 script=script,
                 consistency_report=consistency_report,
+                script_quality_report=script_quality_report,
                 processed_segments=processed,
                 llm_manim_retries=llm_retries_total,
                 elapsed_seconds=time.perf_counter() - t0,

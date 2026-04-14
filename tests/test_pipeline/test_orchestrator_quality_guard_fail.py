@@ -7,10 +7,7 @@ from manim_video_gen.models.script import Segment, TTSResult, VideoScript
 from manim_video_gen.pipeline.orchestrator import generate_video
 
 
-class _DummyClient:
-    def __init__(self, *args, **kwargs):
-        self.calls = 0
-
+class _DummyClientNoImprove:
     async def __aenter__(self):
         return self
 
@@ -26,31 +23,36 @@ class _DummyClient:
                 title="t", steps=[SolutionStep(step_number=1, explanation="e")]
             )
 
+        # Always equation-only script (low visual variety)
         return VideoScript(
             title="v",
             segments=[
                 Segment(
                     id=0,
-                    narration="수식을 씁니다",
-                    tts_text="수식을 씁니다",
+                    narration="x^2+2x+1=0을 씁니다.",
+                    tts_text="엑스 제곱 더하기 이엑스 더하기 일은 영을 씁니다.",
                     visual_description="desc",
                     visual_type="equation_write",
-                    visual_params={"latex": "x^2+1=0"},
+                    visual_params={"latex": "x^2+2x+1=0"},
                     prev_scene_state=None,
                 ),
                 Segment(
                     id=1,
-                    narration="다음 수식으로 바꿉니다",
-                    tts_text="다음 수식으로 바꿉니다",
+                    narration="인수분해하면 (x+1)^2=0 입니다.",
+                    tts_text="인수분해하면 엑스 더하기 일의 제곱은 영입니다.",
                     visual_description="desc",
                     visual_type="equation_transform",
-                    visual_params={"from_latex": "x^2+1=0", "to_latex": "x^2=-1"},
-                    prev_scene_state=[
-                        {
-                            "latex": "x^2+1=0",
-                            "position_expr": "UP",
-                        }
-                    ],
+                    visual_params={"from_latex": "x^2+2x+1=0", "to_latex": "(x+1)^2=0"},
+                    prev_scene_state=None,
+                ),
+                Segment(
+                    id=2,
+                    narration="해는 x=-1 입니다.",
+                    tts_text="해는 엑스는 마이너스 일입니다.",
+                    visual_description="desc",
+                    visual_type="highlight_result",
+                    visual_params={"latex": "x=-1"},
+                    prev_scene_state=None,
                 ),
             ],
         )
@@ -78,14 +80,6 @@ class _DummyComposer:
         output.write_bytes(b"mp4")
         return output
 
-    def generate_silence_audio(self, *, duration, output_path):
-        output_path.write_bytes(b"m4a")
-        return output_path
-
-    def concat_segments(self, segment_paths, output_path):
-        output_path.write_bytes(b"mp4")
-        return output_path
-
 
 def _make_dummy_ffprobe_duration(seconds: float):
     def _ffprobe_duration(_path):
@@ -95,31 +89,27 @@ def _make_dummy_ffprobe_duration(seconds: float):
 
 
 @pytest.mark.asyncio
-async def test_overlap_safe_mode_disables_chain_and_prev_state(monkeypatch):
+async def test_quality_guard_fail_on_soft_after_max_raises(monkeypatch):
     def _fake_render_manim_scene(**kwargs):
-        scene_path = kwargs["scene_path"]
-        code = kwargs["code"]
-        if scene_path.stem.startswith("scene_"):
-            assert "_p0 = MathTex(" not in code
-            assert "self.add(_p0)" not in code
-        # chain mode should be bypassed entirely
-        assert not scene_path.stem.startswith("chain_")
-        path = scene_path.with_suffix(".mp4")
+        path = kwargs["scene_path"].with_suffix(".mp4")
         path.write_bytes(b"mp4")
         return path
 
     monkeypatch.setattr(
-        "manim_video_gen.pipeline.orchestrator.OpenRouterClient", _DummyClient
+        "manim_video_gen.pipeline.orchestrator.OpenRouterClient",
+        lambda *_a, **_k: _DummyClientNoImprove(),
     )
     monkeypatch.setattr(
-        "manim_video_gen.pipeline.orchestrator.get_tts_provider", lambda _s: _DummyTTS()
+        "manim_video_gen.pipeline.orchestrator.get_tts_provider",
+        lambda _s: _DummyTTS(),
     )
     monkeypatch.setattr(
         "manim_video_gen.pipeline.orchestrator.render_manim_scene",
         _fake_render_manim_scene,
     )
     monkeypatch.setattr(
-        "manim_video_gen.pipeline.orchestrator.VideoComposer", _DummyComposer
+        "manim_video_gen.pipeline.orchestrator.VideoComposer",
+        _DummyComposer,
     )
     monkeypatch.setattr(
         "manim_video_gen.pipeline.orchestrator.ffprobe_duration_seconds",
@@ -128,19 +118,19 @@ async def test_overlap_safe_mode_disables_chain_and_prev_state(monkeypatch):
 
     settings = get_settings().model_copy(
         update={
+            "script_quality_enabled": True,
+            "script_quality_profile": "quality_first",
+            "script_quality_min_total": 0.95,
+            "script_quality_max_attempts": 1,
+            "script_quality_max_segments_per_attempt": 1,
+            "script_quality_fail_on_soft_after_max": True,
+            "consistency_mode": "warn",
             "burn_subtitles": False,
             "diagnostic_dump": False,
-            "keep_workspace": True,
+            "keep_workspace": False,
             "openrouter_api_key": "dummy",
-            "script_quality_enabled": False,
-            "disable_equation_chain": True,
-            "disable_prev_scene_state": True,
-            "scene_bridge_enabled": False,
         }
     )
 
-    final_path, workspace = await generate_video("dummy problem", settings=settings)
-    try:
-        assert final_path.is_file()
-    finally:
-        workspace.cleanup()
+    with pytest.raises(ValueError, match="Script quality"):
+        await generate_video("dummy", settings=settings)

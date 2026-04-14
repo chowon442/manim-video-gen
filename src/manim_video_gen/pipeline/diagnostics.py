@@ -54,6 +54,41 @@ def _serialize_consistency_report(report: Any | None) -> dict[str, Any]:
     }
 
 
+def _serialize_script_quality_report(report: Any | None) -> dict[str, Any]:
+    if report is None:
+        return {
+            "enabled": False,
+            "profile": None,
+            "total_score": None,
+            "dimensions": {},
+            "hard_failures": [],
+            "soft_issues": [],
+            "repair_targets": [],
+        }
+
+    def _issue_to_dict(issue: Any) -> dict[str, Any]:
+        return {
+            "severity": str(getattr(issue, "severity", "warn")),
+            "code": str(getattr(issue, "code", "UNKNOWN")),
+            "message": str(getattr(issue, "message", "")),
+            "segment_id": int(getattr(issue, "segment_id", -1)),
+        }
+
+    hard = [_issue_to_dict(i) for i in getattr(report, "hard_failures", [])]
+    soft = [_issue_to_dict(i) for i in getattr(report, "soft_issues", [])]
+    return {
+        "enabled": True,
+        "profile": str(getattr(report, "profile", "balanced")),
+        "total_score": float(getattr(report, "total_score", 0.0)),
+        "dimensions": dict(getattr(report, "dimensions", {}) or {}),
+        "hard_failures": hard,
+        "soft_issues": soft,
+        "repair_targets": [
+            int(x) for x in list(getattr(report, "repair_targets", []) or [])
+        ],
+    }
+
+
 def dump_generation_diagnostics(
     *,
     run_id: str,
@@ -62,6 +97,7 @@ def dump_generation_diagnostics(
     plan: SolutionPlan | None,
     script: VideoScript | None,
     consistency_report: Any | None,
+    script_quality_report: Any | None,
     processed_segments: list[ProcessedSegment],
     llm_manim_retries: int,
     elapsed_seconds: float,
@@ -83,6 +119,10 @@ def dump_generation_diagnostics(
     _write_json(
         run_dir / "consistency_report.json",
         _serialize_consistency_report(consistency_report),
+    )
+    _write_json(
+        run_dir / "script_quality_report.json",
+        _serialize_script_quality_report(script_quality_report),
     )
 
     code_dir = run_dir / "segment_code"

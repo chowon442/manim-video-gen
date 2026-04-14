@@ -7,6 +7,7 @@ import pytest
 from manim_video_gen.video.subtitle import (
     _ass_escape,
     _normalize_subtitle_narration,
+    _strip_math_delimiters,
     _wrap_narration_lines,
     generate_ass_subtitle,
     generate_chain_ass_subtitle,
@@ -44,6 +45,27 @@ def test_normalize_subtitle_narration_strips_text_cmd():
     src = r"(-3,\,12)\text{ 극대}"
     out = _normalize_subtitle_narration(src)
     assert out == "(-3, 12) 극대"
+
+
+def test_strip_math_delimiters_removes_dollar_wrappers():
+    assert _strip_math_delimiters(r"$g(x)$") == "g(x)"
+    assert _strip_math_delimiters(r"$$g(x)$$") == "g(x)"
+
+
+def test_normalize_subtitle_narration_greek_to_unicode():
+    assert "α" in _normalize_subtitle_narration(r"$f(\alpha)=f(1)$")
+    assert "$" not in _normalize_subtitle_narration(r"$f(\alpha)=f(1)$")
+
+
+def test_normalize_subtitle_narration_frac_and_sqrt():
+    out = _normalize_subtitle_narration(r"$\frac{1}{2}$와 $\sqrt{3}$")
+    assert out == "(1)/(2)와 √(3)"
+
+
+def test_normalize_subtitle_narration_sub_sup_unicode():
+    """$f(x_1)={x_1}^3+6y^3$ -> plain Unicode (no $, sub/sup as Unicode)."""
+    out = _normalize_subtitle_narration("$f(x_1)={x_1}^3+6y^3$")
+    assert out == "f(x₁)=x₁³+6y³"
 
 
 def test_wrap_inserts_ass_line_breaks():

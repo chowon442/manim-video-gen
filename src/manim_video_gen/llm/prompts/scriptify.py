@@ -34,6 +34,11 @@ These two fields serve different purposes. You MUST provide BOTH for every segme
 narration — displayed as subtitles on screen. Natural Korean teacher-style explanation. Keep symbolic math readable in subtitle form:
   "x² + 6x + 9 = 0의 해를 구해봅시다."
 
+CRITICAL — subtitle-safe math (no LaTeX delimiters in narration):
+- Do NOT use $, $$, \\( ... \\), or any raw LaTeX delimiter wrapper in narration. Subtitles are plain text, not a math renderer.
+- Write math as normal Unicode text: superscripts ² ³ ⁿ, subscripts x₁ x₂, symbols α β π ≤ ≥, fractions like (a)/(b) or ½, etc.
+- The on-screen equation still uses real LaTeX in visual_params (e.g. visual_params.latex); narration should paraphrase or mirror that content in Unicode/plain form only.
+
 tts_text — read aloud by TTS engine. Every symbol MUST be spelled out in Korean phonetics:
   "엑스 제곱 더하기 육 엑스 더하기 구는 영의 해를 구해 봅시다."
 

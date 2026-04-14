@@ -8,17 +8,197 @@ from pathlib import Path
 
 _SUBSCRIPT_BRACE_RE = re.compile(r"_\{([^{}]+)\}")
 _SUPERSCRIPT_BRACE_RE = re.compile(r"\^\{([^{}]+)\}")
+# Latin + Greek letters (for sub/sup script pairing)
+_LETTER_CLASS = "a-zA-Z\u03b1-\u03c9\u0391-\u03a9"
+_SUB_DIGIT_TRANS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+_SUP_DIGIT_TRANS = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+_SUP_EXTRA_TRANS = str.maketrans("+-=()n", "⁺⁻⁼⁽⁾ⁿ")
 _TEXT_CMD_RE = re.compile(r"\\text\s*\{([^{}]*)\}")
+_MATHRM_CMD_RE = re.compile(r"\\mathrm\s*\{([^{}]*)\}")
+_FRAC_RE = re.compile(r"\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}")
+_SQRT_RE = re.compile(r"\\sqrt\s*\{([^{}]*)\}")
 _TEX_CMD_RE = re.compile(r"\\[a-zA-Z]+")
+
+# ASS cannot render LaTeX; map common commands to Unicode so symbols stay visible.
+# Longer names first (e.g. \varepsilon before \epsilon is unnecessary here — no prefix clash).
+_LATEX_CMD_TO_UNICODE: tuple[tuple[str, str], ...] = (
+    (r"\varepsilon", "ε"),
+    (r"\vartheta", "ϑ"),
+    (r"\varsigma", "ς"),
+    (r"\varphi", "φ"),
+    (r"\epsilon", "ε"),
+    (r"\upsilon", "υ"),
+    (r"\lambda", "λ"),
+    (r"\sigma", "σ"),
+    (r"\omega", "ω"),
+    (r"\alpha", "α"),
+    (r"\beta", "β"),
+    (r"\gamma", "γ"),
+    (r"\delta", "δ"),
+    (r"\zeta", "ζ"),
+    (r"\eta", "η"),
+    (r"\theta", "θ"),
+    (r"\iota", "ι"),
+    (r"\kappa", "κ"),
+    (r"\mu", "μ"),
+    (r"\nu", "ν"),
+    (r"\xi", "ξ"),
+    (r"\pi", "π"),
+    (r"\rho", "ρ"),
+    (r"\tau", "τ"),
+    (r"\phi", "φ"),
+    (r"\chi", "χ"),
+    (r"\psi", "ψ"),
+    (r"\Gamma", "Γ"),
+    (r"\Delta", "Δ"),
+    (r"\Theta", "Θ"),
+    (r"\Lambda", "Λ"),
+    (r"\Xi", "Ξ"),
+    (r"\Pi", "Π"),
+    (r"\Sigma", "Σ"),
+    (r"\Phi", "Φ"),
+    (r"\Psi", "Ψ"),
+    (r"\Omega", "Ω"),
+    (r"\infty", "∞"),
+    (r"\cdots", "⋯"),
+    (r"\ldots", "…"),
+    (r"\dots", "…"),
+    (r"\cdot", "·"),
+    (r"\times", "×"),
+    (r"\div", "÷"),
+    (r"\pm", "±"),
+    (r"\mp", "∓"),
+    (r"\leq", "≤"),
+    (r"\geq", "≥"),
+    (r"\neq", "≠"),
+    (r"\approx", "≈"),
+    (r"\equiv", "≡"),
+    (r"\in", "∈"),
+    (r"\notin", "∉"),
+    (r"\subset", "⊂"),
+    (r"\partial", "∂"),
+    (r"\nabla", "∇"),
+    (r"\sum", "∑"),
+    (r"\prod", "∏"),
+    (r"\int", "∫"),
+    (r"\angle", "∠"),
+    (r"\perp", "⊥"),
+    (r"\parallel", "∥"),
+    (r"\degree", "°"),
+    (r"\circ", "°"),
+    (r"\sin", "sin"),
+    (r"\cos", "cos"),
+    (r"\tan", "tan"),
+    (r"\cot", "cot"),
+    (r"\sec", "sec"),
+    (r"\csc", "csc"),
+    (r"\log", "log"),
+    (r"\ln", "ln"),
+    (r"\exp", "exp"),
+    (r"\lim", "lim"),
+    (r"\max", "max"),
+    (r"\min", "min"),
+    (r"\sup", "sup"),
+    (r"\inf", "inf"),
+    (r"\det", "det"),
+    (r"\gcd", "gcd"),
+    (r"\quad", " "),
+    (r"\qquad", "  "),
+    (r"\left", ""),
+    (r"\right", ""),
+)
+
+
+def _strip_math_delimiters(t: str) -> str:
+    """Remove $ / $$ wrappers (ASS has no inline math renderer)."""
+    s = t.replace("$$", "")
+    return s.replace("$", "")
+
+
+def _latex_fragments_to_unicode(t: str) -> str:
+    """Turn common LaTeX into plain Unicode for subtitle burn-in."""
+    out = _FRAC_RE.sub(r"(\1)/(\2)", t)
+    out = _SQRT_RE.sub(r"√(\1)", out)
+    out = _MATHRM_CMD_RE.sub(r"\1", out)
+    for cmd, u in _LATEX_CMD_TO_UNICODE:
+        out = out.replace(cmd, u)
+    return out
+
+
+def _to_subscript_digits(digits: str) -> str:
+    if not digits.isdigit():
+        return digits
+    return digits.translate(_SUB_DIGIT_TRANS)
+
+
+def _to_superscript_chunk(chunk: str) -> str:
+    """Map digits and a few symbols to Unicode superscript (e.g. ^{10} -> ¹⁰)."""
+    out: list[str] = []
+    for ch in chunk:
+        if ch in "0123456789":
+            out.append(ch.translate(_SUP_DIGIT_TRANS))
+        elif ch in "+-=()n":
+            out.append(ch.translate(_SUP_EXTRA_TRANS))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _apply_unicode_math_scripts(t: str) -> str:
+    """Convert LaTeX-like sub/sup to Unicode (₀₁₂, ⁰¹²) where possible."""
+    out = t
+
+    # {x_12} -> x₁₂ (unwrap brace + single-letter subscript)
+    out = re.sub(
+        rf"\{{([{_LETTER_CLASS}])_([0-9]+)\}}",
+        lambda m: m.group(1) + _to_subscript_digits(m.group(2)),
+        out,
+    )
+
+    # _{12} -> ₁₂ (numeric subscript only)
+    out = re.sub(
+        r"_\{([0-9]+)\}",
+        lambda m: _to_subscript_digits(m.group(1)),
+        out,
+    )
+
+    # x_12 -> x₁₂ (letter + bare numeric subscript)
+    out = re.sub(
+        rf"([{_LETTER_CLASS}])_([0-9]+)",
+        lambda m: m.group(1) + _to_subscript_digits(m.group(2)),
+        out,
+    )
+
+    # ^{10}, ^{n}, etc.
+    out = re.sub(
+        r"\^\{([^}]+)\}",
+        lambda m: _to_superscript_chunk(m.group(1))
+        if re.fullmatch(r"[0-9+=()n\-]+", m.group(1))
+        else "^{" + m.group(1) + "}",
+        out,
+    )
+
+    # x₁^3, y^2 (letter, optional Unicode subscript digits, then ASCII caret + digits)
+    out = re.sub(
+        rf"([{_LETTER_CLASS}])([₀₁₂₃₄₅₆₇₈₉]*)\^([0-9]+)",
+        lambda m: m.group(1) + m.group(2) + _to_superscript_chunk(m.group(3)),
+        out,
+    )
+
+    # Remaining _{...} / ^{...} — readable fallback
+    out = _SUBSCRIPT_BRACE_RE.sub(r"_(\1)", out)
+    out = _SUPERSCRIPT_BRACE_RE.sub(r"^(\1)", out)
+    return out
 
 
 def _normalize_subtitle_narration(text: str) -> str:
     """Normalize LaTeX-like remnants so subtitles stay readable."""
     t = str(text)
+    t = _strip_math_delimiters(t)
     t = t.replace(r"\,", " ").replace(r"\;", " ").replace(r"\:", " ")
     t = _TEXT_CMD_RE.sub(r"\1", t)
-    t = _SUBSCRIPT_BRACE_RE.sub(r"_(\1)", t)
-    t = _SUPERSCRIPT_BRACE_RE.sub(r"^(\1)", t)
+    t = _latex_fragments_to_unicode(t)
+    t = _apply_unicode_math_scripts(t)
     t = _TEX_CMD_RE.sub("", t)
     t = t.replace("\\", "")
     t = re.sub(r"\s+", " ", t).strip()

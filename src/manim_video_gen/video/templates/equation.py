@@ -92,6 +92,9 @@ def _collect_latex_values(
         for item in steps_raw:
             if isinstance(item, dict) and "latex" in item:
                 values.append(str(item["latex"]))
+                ann = item.get("annotation")
+                if isinstance(ann, str) and ann.strip():
+                    values.append(ann.strip())
             elif isinstance(item, str):
                 values.append(item)
     pts = params.get("points")

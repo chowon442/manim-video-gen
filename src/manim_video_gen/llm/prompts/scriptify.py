@@ -78,10 +78,10 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
    - visual_params: steps (array of LaTeX strings), arrange_direction (optional: "DOWN" or "RIGHT", default "DOWN").
 
 4) equation_derivation
-   - Screen: ONE continuous derivation board. The first line is the starting equation at the top; each next line is placed BELOW with a downward arrow and optional Korean annotation (Text) between lines (e.g. "x를 이항", "인수분해"). Earlier lines stay visible — viewers see the full chain at once after the segment ends.
+   - Screen: ONE continuous derivation board. The first line is the starting equation at the top; each next line is placed BELOW with a downward arrow and optional annotation between lines: plain Korean uses Text (e.g. "x를 이항", "인수분해"); if the annotation includes LaTeX (backslash commands like \\alpha, \\frac), it is rendered with MathTex and may mix Korean via \\text{...}. Earlier lines stay visible — viewers see the full chain at once after the segment ends.
    - Use this instead of splitting the same algebraic story across separate equation_write + equation_transform segments when 2–4 related rewrites belong together (e.g. move term → standard form → factor).
    - narration MUST follow the same sequence of lines and annotations; do not mention graphs unless you switch to graph_plot.
-   - visual_params: steps (array of objects). First step: {"latex": "..."}. Later steps: {"latex": "...", "annotation": "짧은 한글 설명"} — annotation may be empty string if not needed.
+   - visual_params: steps (array of objects). First step: {"latex": "..."}. Later steps: {"latex": "...", "annotation": "짧은 한글 설명 또는 LaTeX"} — annotation may be empty string if not needed.
    - Do NOT use equation_derivation for more than 5 equation lines; split into another segment if longer.
 
 5) graph_plot

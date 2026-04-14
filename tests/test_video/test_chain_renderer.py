@@ -125,9 +125,29 @@ def test_equation_derivation_in_chain():
     ch = _chain((s0, 6.0))
     code = ChainRenderer().render_chain(ch)
     assert r"\Downarrow" in code or "Downarrow" in code
-    assert "Text(" in code
+    assert "lab_1 = Text(" in code
     assert "active = VGroup(*list(self.mobjects))" in code
     compile(code, "<chain>", "exec")
+
+
+def test_equation_derivation_annotation_mathtex_when_latex():
+    s0 = Segment(
+        id=0,
+        narration="a",
+        visual_description="d",
+        visual_type="equation_derivation",
+        visual_params={
+            "steps": [
+                {"latex": r"x^2+1=0"},
+                {"latex": r"x^2=-1", "annotation": r"\alpha \text{ 도출}"},
+            ]
+        },
+    )
+    ch = _chain((s0, 6.0))
+    code = ChainRenderer().render_chain(ch)
+    assert "lab_1 = MathTex(" in code
+    assert "lab_1 = Text(" not in code
+    compile(code, "<chain_mathtex_ann>", "exec")
 
 
 def test_highlight_after_derivation_replaces_active_group():

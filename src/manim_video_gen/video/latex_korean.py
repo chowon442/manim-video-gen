@@ -43,6 +43,32 @@ def apply_text_glyph_fallback(text: str) -> str:
     return out
 
 
+def derivation_annotation_needs_mathtex(s: str) -> bool:
+    """True if a derivation step annotation should use MathTex instead of Text.
+
+    Backslash implies LaTeX commands (e.g. ``\\alpha``, ``\\frac``). ``$`` is
+    treated as inline math delimiters.
+    """
+    t = str(s).strip()
+    if not t:
+        return False
+    return "\\" in t or "$" in t
+
+
+def prepare_derivation_annotation(s: str) -> tuple[str, bool]:
+    """Return ``(display_string, use_mathtex)`` for equation_derivation labels.
+
+    MathTex path: ``wrap_korean_text_runs`` so Hangul and spaces work in TeX.
+    Text path: ``apply_text_glyph_fallback`` only (no LaTeX).
+    """
+    t = str(s).strip()
+    if not t:
+        return "", False
+    if derivation_annotation_needs_mathtex(t):
+        return wrap_korean_text_runs(t), True
+    return apply_text_glyph_fallback(t), False
+
+
 def _visible_cjk_space_payload(run: str) -> str:
     normalized = re.sub(r"\s+", " ", str(run)).strip()
     return normalized.replace(" ", r"\hspace{0.33em}")

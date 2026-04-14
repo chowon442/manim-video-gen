@@ -15,6 +15,7 @@ from manim_video_gen.video.anim_timing import (
 )
 from manim_video_gen.video.latex_korean import (
     apply_text_glyph_fallback,
+    prepare_derivation_annotation,
     sanitize_latex_for_text_label,
     wrap_korean_text_runs,
 )
@@ -205,6 +206,10 @@ class EquationDerivationTemplate:
         t0, per_trans, t_end = _derivation_segment_times(duration, n, has_ann)
 
         latex_list = [p[0] for p in parsed]
+        for _lx, ann in parsed:
+            disp, use_tex = prepare_derivation_annotation(ann)
+            if use_tex and disp:
+                latex_list.append(disp)
         if prev_scene_state:
             latex_list.extend(st.latex for st in prev_scene_state)
         imports = (
@@ -233,11 +238,20 @@ class EquationDerivationTemplate:
             )
             if ann.strip():
                 lab_name = f"lab_{idx}"
-                lines.append(
-                    f"        {lab_name} = Text({repr(apply_text_glyph_fallback(ann.strip()))}, font_size=26)\n"
-                    f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
-                    f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
-                )
+                disp, use_tex = prepare_derivation_annotation(ann)
+                if use_tex:
+                    lines.append(
+                        f"        {lab_name} = MathTex({repr(disp)}, font_size=26)\n"
+                        + indent_lines(fit_tex_mobject_lines(lab_name), 8)
+                        + f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
+                        f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
+                    )
+                else:
+                    lines.append(
+                        f"        {lab_name} = Text({repr(disp)}, font_size=26)\n"
+                        f"        {lab_name}.next_to({arr_name}, RIGHT, buff=0.2)\n"
+                        f"        self.play(FadeIn({lab_name}), run_time={ann_t:.3f})\n"
+                    )
             eq_name = f"eq_{idx}"
             lines.append(
                 f"        {eq_name} = MathTex({repr(latex_i)})\n"

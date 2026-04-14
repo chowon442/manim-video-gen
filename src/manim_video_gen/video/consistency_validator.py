@@ -70,6 +70,13 @@ def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
     return any(tok in text for tok in tokens)
 
 
+def _patch_ops(seg: Segment) -> list[dict[str, object]]:
+    raw = (seg.visual_params or {}).get("patch_ops")
+    if not isinstance(raw, list):
+        return []
+    return [op for op in raw if isinstance(op, dict)]
+
+
 def _contains_equation_only_graph_claim(narration: str) -> bool:
     """Graph claim that truly requires non-equation visuals.
 
@@ -127,7 +134,10 @@ def _segment_issues(seg: Segment) -> list[ValidationIssue]:
     if vt == "graph_plot" and _contains_any(narration, _POINT_TOKENS):
         points = vp.get("points")
         extrema = vp.get("extrema_points")
-        if not points and not extrema:
+        has_patch_points = any(
+            str(op.get("op", "")).strip() == "add_point" for op in _patch_ops(seg)
+        )
+        if not points and not extrema and not has_patch_points:
             issues.append(
                 ValidationIssue(
                     severity="error",

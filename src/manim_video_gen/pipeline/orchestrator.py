@@ -402,7 +402,14 @@ def _requires_custom_scene(seg: Segment) -> bool:
         "곡선" in narration or "그래프" in narration or "curve" in narration
     )
 
-    supports_multi = bool(vp.get("extra_functions") or vp.get("line_python"))
+    patch_ops = vp.get("patch_ops")
+    patch_supports_curve = isinstance(patch_ops, list) and any(
+        isinstance(op, dict) and str(op.get("op", "")).strip() == "add_curve"
+        for op in patch_ops
+    )
+    supports_multi = bool(
+        vp.get("extra_functions") or vp.get("line_python") or patch_supports_curve
+    )
     if has_line_claim and has_curve_claim and not supports_multi:
         return True
     return False
@@ -1138,17 +1145,19 @@ async def generate_video(
                             continue
 
                         try:
-                            bridge_path, bridge_code, bridge_duration = (
-                                await _render_bridge_segment_with_duration_guard(
-                                    workspace=workspace,
-                                    composer=composer,
-                                    settings=settings,
-                                    from_segment_id=left_id,
-                                    to_segment_id=right_id,
-                                    from_latex=str(spec["from_latex"]),
-                                    to_latex=str(spec["to_latex"]),
-                                    duration=float(spec["duration"]),
-                                )
+                            (
+                                bridge_path,
+                                bridge_code,
+                                bridge_duration,
+                            ) = await _render_bridge_segment_with_duration_guard(
+                                workspace=workspace,
+                                composer=composer,
+                                settings=settings,
+                                from_segment_id=left_id,
+                                to_segment_id=right_id,
+                                from_latex=str(spec["from_latex"]),
+                                to_latex=str(spec["to_latex"]),
+                                duration=float(spec["duration"]),
                             )
                             merged_paths.insert(i + 1, bridge_path)
                             bridge_seg_id = 100000 + left_id * 100 + right_id

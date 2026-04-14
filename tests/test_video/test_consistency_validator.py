@@ -42,6 +42,28 @@ def test_graph_plot_with_points_passes_point_rule():
     assert not any(i.code == "E_GRAPH_POINTS_MISSING" for i in r.issues)
 
 
+def test_graph_plot_patch_ops_points_satisfy_point_rule():
+    s = _seg(
+        id=22,
+        visual_type="graph_plot",
+        visual_params={
+            "func_python": "lambda x: x**3",
+            "patch_ops": [
+                {
+                    "op": "add_point",
+                    "x": -1,
+                    "y": 2,
+                    "color": "RED",
+                    "label": "극대",
+                }
+            ],
+        },
+        narration="그래프에서 극대와 극소를 빨간 점으로 표시합니다.",
+    )
+    r = validate_script_consistency([s])
+    assert not any(i.code == "E_GRAPH_POINTS_MISSING" for i in r.issues)
+
+
 def test_equation_write_mentions_graph_is_error():
     s = _seg(
         id=3,
@@ -112,8 +134,7 @@ def test_tts_text_with_spoken_parenthesis_markers_is_error():
     )
     r = validate_script_consistency([s])
     assert any(
-        i.code == "E_TTS_SPOKEN_PARENTHESIS" and i.severity == "error"
-        for i in r.issues
+        i.code == "E_TTS_SPOKEN_PARENTHESIS" and i.severity == "error" for i in r.issues
     )
 
 

@@ -35,3 +35,22 @@ def test_graph_plot_single_curve_stays_template():
         },
     )
     assert _requires_custom_scene(seg) is False
+
+
+def test_graph_plot_curve_and_line_claim_with_patch_curve_stays_template():
+    seg = _seg(
+        narration="직선 y=-2x+6을 곡선과 함께 그리겠습니다.",
+        visual_type="graph_plot",
+        visual_params={
+            "func_python": "lambda x: x**3 + 6*x**2 + 9*x + 12",
+            "patch_ops": [
+                {
+                    "op": "add_curve",
+                    "func_python": "lambda x: -2*x + 6",
+                    "color": "GREEN",
+                    "label": "y=-2x+6",
+                }
+            ],
+        },
+    )
+    assert _requires_custom_scene(seg) is False

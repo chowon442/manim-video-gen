@@ -63,6 +63,27 @@ def _safe_manim_color(name: str, default: str = "WHITE") -> str:
     return u if u in _MANIM_COLORS else default
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _normalize_lambda_expr(expr: Any, *, default: str = "lambda x: x") -> str:
+    s = str(expr or "").strip()
+    if not s:
+        return default
+    return s if s.startswith("lambda") else f"lambda x: ({s})"
+
+
+def _iter_patch_ops(params: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = params.get("patch_ops")
+    if not isinstance(raw, list):
+        return []
+    return [op for op in raw if isinstance(op, dict)]
+
+
 def _direction_const(name: str) -> str:
     u = str(name).strip().upper()
     return u if u in ("UP", "DOWN", "LEFT", "RIGHT") else "UP"
@@ -300,6 +321,17 @@ class NumberLinePlotTemplate:
                 )
             )
 
+        for op in _iter_patch_ops(params):
+            if str(op.get("op", "")).strip() != "add_point":
+                continue
+            points.append(
+                (
+                    _safe_float(op.get("value"), 0.0),
+                    str(op.get("label", "") or ""),
+                    _safe_manim_color(str(op.get("color", "RED")), "RED"),
+                )
+            )
+
         regions_raw = params.get("regions") or []
         regions: list[tuple[float, float, str, float]] = []
         for r in regions_raw:
@@ -311,6 +343,18 @@ class NumberLinePlotTemplate:
                     float(r.get("end", 0)),
                     _safe_manim_color(str(r.get("color", "BLUE")), "BLUE"),
                     float(r.get("opacity", 0.28)),
+                )
+            )
+
+        for op in _iter_patch_ops(params):
+            if str(op.get("op", "")).strip() != "add_region":
+                continue
+            regions.append(
+                (
+                    _safe_float(op.get("start"), 0.0),
+                    _safe_float(op.get("end"), 0.0),
+                    _safe_manim_color(str(op.get("color", "BLUE")), "BLUE"),
+                    _safe_float(op.get("opacity"), 0.28),
                 )
             )
 
@@ -350,18 +394,18 @@ class NumberLinePlotTemplate:
                     f"        self.play(FadeIn(dot_{j}), run_time={t_each:.3f})\n"
                 )
                 continue
-                if has_cjk(lbl):
-                    plain_lbl = sanitize_latex_for_text_label(lbl)
-                    body.append(
-                        f"        lbl_{j} = Text({repr(apply_text_glyph_fallback(plain_lbl))}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
-                        + indent_lines(
-                            fit_text_mobject_lines(
-                                f"lbl_{j}", max_width_expr="config.frame_width * 0.45"
-                            ),
-                            8,
-                        )
-                        + f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+            if has_cjk(lbl):
+                plain_lbl = sanitize_latex_for_text_label(lbl)
+                body.append(
+                    f"        lbl_{j} = Text({repr(apply_text_glyph_fallback(plain_lbl))}, font_size=26).next_to(dot_{j}, UP, buff=0.18)\n"
+                    + indent_lines(
+                        fit_text_mobject_lines(
+                            f"lbl_{j}", max_width_expr="config.frame_width * 0.45"
+                        ),
+                        8,
                     )
+                    + f"        self.play(FadeIn(dot_{j}), FadeIn(lbl_{j}), run_time={t_each:.3f})\n"
+                )
             else:
                 body.append(
                     f"        lbl_{j} = MathTex({repr(lbl)}, font_size=30).next_to(dot_{j}, UP, buff=0.14)\n"
@@ -398,6 +442,10 @@ class AnnotatedEquationTemplate:
         raw_latex = wrap_korean_text_runs(str(params.get("latex", r"0=0")))
         ann_raw = params.get("annotations") or []
         annotations = [a for a in ann_raw if isinstance(a, dict)]
+        for op in _iter_patch_ops(params):
+            if str(op.get("op", "")).strip() != "add_annotation":
+                continue
+            annotations.append(op)
         braced = _inject_braces_for_annotations(raw_latex, annotations)
 
         all_latex = [braced]
@@ -511,6 +559,29 @@ class GraphPlotTemplate:
                     str(p.get("label", "") or ""),
                 )
             )
+
+        extra_curves: list[tuple[str, str, str]] = []
+        for op in _iter_patch_ops(params):
+            op_name = str(op.get("op", "")).strip()
+            if op_name == "add_point":
+                points.append(
+                    (
+                        _safe_float(op.get("x"), 0.0),
+                        _safe_float(op.get("y"), 0.0),
+                        _safe_manim_color(str(op.get("color", "RED")), "RED"),
+                        str(op.get("label", "") or ""),
+                    )
+                )
+            elif op_name == "add_curve":
+                extra_curves.append(
+                    (
+                        _normalize_lambda_expr(
+                            op.get("func_python"), default="lambda x: x"
+                        ),
+                        _safe_manim_color(str(op.get("color", "GREEN")), "GREEN"),
+                        str(op.get("label", "") or ""),
+                    )
+                )
         label_line = ""
         if func_latex and str(func_latex).strip():
             label_line = (
@@ -530,6 +601,9 @@ class GraphPlotTemplate:
         for _x, _y, _pc, pl in points:
             if pl.strip() and not has_cjk(pl):
                 latex_vals.append(pl)
+        for _fn, _col, curve_label in extra_curves:
+            if curve_label.strip() and not has_cjk(curve_label):
+                latex_vals.append(curve_label)
         imports = scene_imports(*latex_vals)
         prev_lines = _prev_state_lines(prev_scene_state)
 
@@ -575,6 +649,39 @@ class GraphPlotTemplate:
                     f"        self.play(FadeIn(p_{i}), run_time={t_point:.3f})\n"
                 )
 
+        curve_lines = ""
+        for i, (curve_fn, curve_color, curve_label) in enumerate(extra_curves):
+            curve_lines += (
+                f"        graph_extra_{i} = axes.plot({curve_fn}, color={curve_color})\n"
+                f"        self.play(Create(graph_extra_{i}), run_time={min(t_plot, ANIM_CAP_FADE + 0.6):.3f})\n"
+            )
+            if curve_label.strip():
+                if has_cjk(curve_label):
+                    plain_curve_label = sanitize_latex_for_text_label(curve_label)
+                    curve_lines += (
+                        f"        graph_extra_{i}_label = Text({repr(apply_text_glyph_fallback(plain_curve_label))}, font_size=24).next_to(graph_extra_{i}, UP, buff=0.12)\n"
+                        + indent_lines(
+                            fit_text_mobject_lines(
+                                f"graph_extra_{i}_label",
+                                max_width_expr="config.frame_width * 0.45",
+                            ),
+                            8,
+                        )
+                        + f"        self.play(FadeIn(graph_extra_{i}_label), run_time={min(t_point, ANIM_CAP_FADE):.3f})\n"
+                    )
+                else:
+                    curve_lines += (
+                        f"        graph_extra_{i}_label = MathTex({repr(curve_label)}, font_size=28).next_to(graph_extra_{i}, UP, buff=0.12)\n"
+                        + indent_lines(
+                            fit_tex_mobject_lines(
+                                f"graph_extra_{i}_label",
+                                max_width_expr="config.frame_width * 0.45",
+                            ),
+                            8,
+                        )
+                        + f"        self.play(FadeIn(graph_extra_{i}_label), run_time={min(t_point, ANIM_CAP_FADE):.3f})\n"
+                    )
+
         return f"""{imports}
 
 class Segment(Scene):
@@ -589,7 +696,7 @@ class Segment(Scene):
         self.play(Create(axes), run_time={t_axes:.3f})
         graph = axes.plot({func_python}, color={color})
         self.play(Create(graph), run_time={t_plot:.3f})
-{label_line}{point_lines}        self.wait({t_end:.3f})
+{label_line}{curve_lines}{point_lines}        self.wait({t_end:.3f})
         self.play(*[FadeOut(m) for m in self.mobjects], run_time={fade_out:.3f})
 """
 

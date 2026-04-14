@@ -87,10 +87,13 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
 5) graph_plot
    - Screen: coordinate axes and a function graph.
    - narration MUST mention the graph / curve / shape (e.g. 포물선) — do NOT use this type if you only show equations.
-   - visual_params: func_python (string, MUST be a single Python lambda like "lambda x: x**2"), x_range ([min,max,step]), y_range ([min,max,step]),
-     x_length (optional number, default 6), y_length (optional number, default 4), color (optional, default BLUE), func_latex (optional label string),
-     points (optional array of {x:number, y:number, color:string, label:string}) and/or extrema_points (same shape).
-   - If narration mentions "점", "극대", "극소", "교점" you MUST provide points or extrema_points.
+    - visual_params: func_python (string, MUST be a single Python lambda like "lambda x: x**2"), x_range ([min,max,step]), y_range ([min,max,step]),
+      x_length (optional number, default 6), y_length (optional number, default 4), color (optional, default BLUE), func_latex (optional label string),
+      points (optional array of {x:number, y:number, color:string, label:string}) and/or extrema_points (same shape).
+      You may also use patch_ops (optional) to extend the base template safely:
+      - {"op":"add_curve","func_python":"lambda x: ...","color":"GREEN","label":"..."}
+      - {"op":"add_point","x":number,"y":number,"color":"RED","label":"..."}
+    - If narration mentions "점", "극대", "극소", "교점" you MUST provide points or extrema_points.
 
 6) highlight_result
    - Screen: one equation with a surrounding rectangle emphasis.
@@ -114,15 +117,19 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
 
 10) number_line_plot
    - Screen: a horizontal NumberLine, optional shaded segment(s) between two x-values, optional labeled Dot(s) at values (roots, endpoints).
-   - Use when explaining roots on a line, intervals, or "해가 여기와 여기" — NOT for full function graphs (use graph_plot).
-   - narration MUST refer to the same values/labels as in visual_params.points / regions.
-   - visual_params: x_range ([min, max, step], default [-5,5,1]), length (optional, default 8), points (optional array of {value: number, label: string, color: string Manim name e.g. RED}), regions (optional array of {start: number, end: number, color: string, opacity: number 0–1}).
+    - Use when explaining roots on a line, intervals, or "해가 여기와 여기" — NOT for full function graphs (use graph_plot).
+    - narration MUST refer to the same values/labels as in visual_params.points / regions.
+    - visual_params: x_range ([min, max, step], default [-5,5,1]), length (optional, default 8), points (optional array of {value: number, label: string, color: string Manim name e.g. RED}), regions (optional array of {start: number, end: number, color: string, opacity: number 0–1}).
+      You may also use patch_ops (optional):
+      - {"op":"add_point","value":number,"label":"...","color":"GREEN"}
+      - {"op":"add_region","start":number,"end":number,"color":"BLUE","opacity":0~1}
 
 11) annotated_equation
    - Screen: one MathTex equation; then sequentially Brace + Korean Text labels on parts of the equation (coefficients, terms).
-   - visual_params.latex MUST use {{token}} around EACH substring that appears in annotations[].target_tex (e.g. "{{a}}x^2+{{b}}x+{{c}}=0" with targets a, b, c). Manim needs double-brace groups for get_part_by_tex.
-   - narration MUST match which part is being labeled.
-   - visual_params: latex (string), annotations (array of {target_tex: string, text: string Korean label, direction: "UP"|"DOWN"|"LEFT"|"RIGHT", color: optional Manim color name}).
+    - visual_params.latex MUST use {{token}} around EACH substring that appears in annotations[].target_tex (e.g. "{{a}}x^2+{{b}}x+{{c}}=0" with targets a, b, c). Manim needs double-brace groups for get_part_by_tex.
+    - narration MUST match which part is being labeled.
+    - visual_params: latex (string), annotations (array of {target_tex: string, text: string Korean label, direction: "UP"|"DOWN"|"LEFT"|"RIGHT", color: optional Manim color name}).
+      You may also append labels via patch_ops: {"op":"add_annotation","target_tex":"...","text":"...","direction":"UP|DOWN|LEFT|RIGHT","color":"..."}.
 
 12) visual_scene
    - Screen: NOT a fixed template — the pipeline runs LLM Manim code generation for this segment (rich visuals: unit circle, areas, custom diagrams).
@@ -146,6 +153,8 @@ Each segment MUST use exactly one of the following. The narration MUST describe 
 - If you use deictics ("이 식", "여기서", "위 식"), the referred equation MUST appear in visual_params or prev_scene_state.
 - visual_description should be a concise director note in Korean that matches narration and params (not contradictory).
 - If visual_type is graph_plot and narration mentions extrema/intersections/marked points, visual_params must include points/extrema_points explicitly.
+- Keep patch_ops small: 0–3 operations per segment unless absolutely necessary.
+- Prefer patch_ops over visual_scene when only small additions (extra curve/point/annotation) are needed.
 
 ## Good vs bad examples
 

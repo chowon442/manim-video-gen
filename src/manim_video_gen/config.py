@@ -125,7 +125,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    tts_provider: Literal["elevenlabs", "azure", "replicate"] = Field(
+    tts_provider: Literal["elevenlabs", "azure", "replicate", "inworld"] = Field(
         default="elevenlabs",
         validation_alias="MANIM_VIDEO_GEN_TTS_PROVIDER",
     )
@@ -181,6 +181,32 @@ class Settings(BaseSettings):
     azure_tts_voice: str = Field(
         default="ko-KR-SunHiNeural",
         validation_alias="MANIM_VIDEO_GEN_AZURE_TTS_VOICE",
+    )
+
+    inworld_tts_api_key: str = Field(
+        default="",
+        validation_alias="INWORLD_TTS_API_KEY",
+    )
+    inworld_tts_model_id: str = Field(
+        default="inworld-tts-1.5-max",
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_MODEL",
+    )
+    inworld_tts_voice_id: str = Field(
+        default="Hyunwoo",
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_VOICE",
+    )
+    inworld_tts_speaking_rate: float = Field(
+        default=1.0,
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_SPEAKING_RATE",
+    )
+    inworld_tts_temperature: float = Field(
+        default=1.0,
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_TEMPERATURE",
+    )
+    inworld_tts_timestamp_type: Literal["NONE", "WORD"] = Field(
+        default="NONE",
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_TIMESTAMP_TYPE",
+        description="Inworld non-streaming: WORD enables timestampInfo (not mapped to word_timestamps yet).",
     )
 
     burn_subtitles: bool = Field(

@@ -3,11 +3,13 @@ from manim_video_gen.tts.azure_tts import AzureSpeechTTS
 from manim_video_gen.tts.base import TTSProvider
 from manim_video_gen.tts.elevenlabs import ElevenLabsTTS
 from manim_video_gen.tts.factory import get_tts_provider
+from manim_video_gen.tts.inworld_tts import InworldTTS
 from manim_video_gen.tts.replicate_tts import ReplicateTTS
 
 __all__ = [
     "AzureSpeechTTS",
     "ElevenLabsTTS",
+    "InworldTTS",
     "ReplicateTTS",
     "TTSProvider",
     "TTSResult",

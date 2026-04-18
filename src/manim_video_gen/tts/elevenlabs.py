@@ -7,7 +7,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -109,7 +109,14 @@ class ElevenLabsTTS(TTSProvider):
             },
         }
 
-    async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        output_path: Path,
+        speaker_role: Literal["teacher", "student"] = "teacher",
+    ) -> TTSResult:
+        _ = speaker_role
         if not text.strip():
             raise TTSError("TTS text is empty", stage="tts")
 

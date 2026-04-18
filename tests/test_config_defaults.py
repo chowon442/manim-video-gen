@@ -21,3 +21,17 @@ def test_script_quality_guard_defaults(monkeypatch):
     assert s.script_quality_enabled is False
     assert s.script_quality_profile == "quality_first"
     assert s.script_quality_min_total == 0.82
+
+
+def test_dialogue_qa_defaults(monkeypatch):
+    monkeypatch.delenv("MANIM_VIDEO_GEN_DIALOGUE_QA_ENABLED", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_LANGUAGE", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_STYLE", raising=False)
+    monkeypatch.delenv("MANIM_VIDEO_GEN_INWORLD_STUDENT_TTS_VOICE", raising=False)
+    s = Settings()
+    assert s.dialogue_qa_enabled is False
+    assert s.replicate_student_tts_speaker == ""
+    assert s.replicate_student_tts_language == ""
+    assert s.replicate_student_tts_style_instruction == ""
+    assert s.inworld_student_tts_voice_id == ""

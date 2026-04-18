@@ -18,6 +18,10 @@ from manim_video_gen.llm.prompts.manim_gen import (
     build_manim_user_prompt,
     manim_system_prompt,
 )
+from manim_video_gen.llm.prompts.dialogue_scriptify import (
+    dialogue_rewrite_system_prompt,
+    dialogue_rewrite_user_prompt,
+)
 from manim_video_gen.llm.prompts.scriptify import (
     SCRIPTIFY_SYSTEM_PROMPT,
     scriptify_user_prompt,
@@ -109,6 +113,11 @@ _BRIDGE_TOKEN_STOPWORDS = frozenset(
         "operatorname",
     }
 )
+
+_DIALOGUE_QUESTION_PREFIX = "[질문]"
+_DIALOGUE_ALLOWED_PROVIDERS = frozenset({"replicate", "inworld"})
+_DIALOGUE_MIN_SEGMENTS_FOR_TWO_QUESTIONS = 5
+_DIALOGUE_REWRITE_MAX_ATTEMPTS = 2
 
 
 def _pick_step_latex(item: Any) -> str | None:
@@ -529,6 +538,199 @@ def _ensure_tts_text(script: VideoScript) -> VideoScript:
             tts = polish_tts_text(tts)
         updated.append(s.model_copy(update={"tts_text": tts}))
     return script.model_copy(update={"segments": updated})
+
+
+def _dialogue_question_count_target(segment_count: int) -> int:
+    return 2 if int(segment_count) >= _DIALOGUE_MIN_SEGMENTS_FOR_TWO_QUESTIONS else 1
+
+
+def _dialogue_rewrite_slot_windows(
+    *,
+    segment_count: int,
+    question_count: int,
+) -> list[tuple[float, float]]:
+    _ = segment_count
+    if question_count <= 1:
+        return [(0.45, 0.55)]
+    return [(0.25, 0.35), (0.65, 0.75)]
+
+
+def _apply_dialogue_prefix_rules(script: VideoScript) -> VideoScript:
+    updated: list[Segment] = []
+    for seg in script.segments:
+        narration = (seg.narration or "").strip()
+        tts_text = (seg.tts_text or "").strip()
+
+        if narration.startswith(_DIALOGUE_QUESTION_PREFIX):
+            narration = narration[len(_DIALOGUE_QUESTION_PREFIX) :].strip()
+        if tts_text.startswith(_DIALOGUE_QUESTION_PREFIX):
+            tts_text = tts_text[len(_DIALOGUE_QUESTION_PREFIX) :].strip()
+
+        if seg.turn == "question":
+            narration = (
+                f"{_DIALOGUE_QUESTION_PREFIX} {narration}"
+                if narration
+                else _DIALOGUE_QUESTION_PREFIX
+            )
+
+        updated.append(seg.model_copy(update={"narration": narration, "tts_text": tts_text}))
+    return script.model_copy(update={"segments": updated})
+
+
+def _normalize_dialogue_script(script: VideoScript) -> VideoScript:
+    script = _ensure_tts_text(script)
+    script = _apply_dialogue_prefix_rules(script)
+    fixed: list[Segment] = []
+    for i, seg in enumerate(script.segments):
+        fixed.append(seg.model_copy(update={"id": i}))
+    return script.model_copy(update={"segments": fixed})
+
+
+def _validate_dialogue_mode_settings(settings: Settings) -> None:
+    if not settings.dialogue_qa_enabled:
+        return
+
+    provider = (settings.tts_provider or "").strip().lower()
+    if provider not in _DIALOGUE_ALLOWED_PROVIDERS:
+        raise ValueError(
+            "Dialogue QA mode supports only replicate/inworld providers. "
+            f"current={provider or '(empty)'}"
+        )
+
+    if provider == "replicate":
+        if not (settings.replicate_student_tts_speaker or "").strip():
+            raise ValueError(
+                "Dialogue QA mode requires MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER"
+            )
+    if provider == "inworld":
+        if not (settings.inworld_student_tts_voice_id or "").strip():
+            raise ValueError(
+                "Dialogue QA mode requires MANIM_VIDEO_GEN_INWORLD_STUDENT_TTS_VOICE"
+            )
+
+
+def _validate_dialogue_script_constraints(
+    script: VideoScript,
+    *,
+    target_question_count: int,
+) -> None:
+    questions: list[tuple[int, Segment]] = []
+    for idx, seg in enumerate(script.segments):
+        if seg.turn == "question":
+            questions.append((idx, seg))
+
+    if len(questions) != target_question_count:
+        raise ValueError(
+            "Dialogue QA requires exact question count. "
+            f"target={target_question_count} actual={len(questions)}"
+        )
+
+    for idx, q in questions:
+        if q.speaker != "student":
+            raise ValueError(
+                f"Dialogue QA question speaker must be student (seg={q.id})"
+            )
+        if idx + 1 >= len(script.segments):
+            raise ValueError(f"Dialogue QA question must be followed by answer (seg={q.id})")
+        nxt = script.segments[idx + 1]
+        if nxt.turn != "answer" or nxt.speaker != "teacher":
+            raise ValueError(
+                "Dialogue QA question must be followed by teacher answer "
+                f"(question_seg={q.id}, next_seg={nxt.id}, next_turn={nxt.turn}, next_speaker={nxt.speaker})"
+            )
+
+
+def _dialogue_repair_prompt(
+    *,
+    plan: SolutionPlan,
+    base_script: VideoScript,
+    previous_script: VideoScript,
+    error_message: str,
+    target_question_count: int,
+    slot_windows: list[tuple[float, float]],
+) -> str:
+    slot_text = ", ".join(f"[{a:.2f},{b:.2f}]" for a, b in slot_windows)
+    return (
+        "이전 대화형 script JSON이 규칙을 위반했습니다. 수정해서 전체 JSON을 다시 출력하세요.\n"
+        f"반드시 질문 개수={target_question_count}를 맞추고, 각 질문 직후 교사 answer 세그먼트를 두세요.\n"
+        f"질문 위치 가이드: {slot_text}\n"
+        f"검증 오류: {error_message}\n\n"
+        "[Solution plan]\n"
+        f"{json.dumps(plan.model_dump(), ensure_ascii=False, indent=2)}\n\n"
+        "[Base script]\n"
+        f"{json.dumps(base_script.model_dump(), ensure_ascii=False, indent=2)}\n\n"
+        "[Previous invalid dialogue script]\n"
+        f"{json.dumps(previous_script.model_dump(), ensure_ascii=False, indent=2)}\n"
+    )
+
+
+async def _rewrite_script_with_dialogue_qa(
+    *,
+    client: OpenRouterClient,
+    settings: Settings,
+    plan: SolutionPlan,
+    base_script: VideoScript,
+) -> VideoScript:
+    target_question_count = _dialogue_question_count_target(len(base_script.segments))
+    slot_windows = _dialogue_rewrite_slot_windows(
+        segment_count=len(base_script.segments),
+        question_count=target_question_count,
+    )
+    last_err: Exception | None = None
+    previous: VideoScript | None = None
+
+    for attempt in range(1, _DIALOGUE_REWRITE_MAX_ATTEMPTS + 1):
+        if attempt == 1 or previous is None or last_err is None:
+            user_prompt = dialogue_rewrite_user_prompt(
+                plan=plan,
+                base_script=base_script,
+                target_question_count=target_question_count,
+                slot_windows=slot_windows,
+            )
+        else:
+            user_prompt = _dialogue_repair_prompt(
+                plan=plan,
+                base_script=base_script,
+                previous_script=previous,
+                error_message=str(last_err),
+                target_question_count=target_question_count,
+                slot_windows=slot_windows,
+            )
+
+        candidate = await client.complete_json_model(
+            model=settings.model_script,
+            messages=[
+                {"role": "system", "content": dialogue_rewrite_system_prompt()},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_model=VideoScript,
+        )
+        candidate = _normalize_dialogue_script(candidate)
+        previous = candidate
+
+        try:
+            _validate_dialogue_script_constraints(
+                candidate,
+                target_question_count=target_question_count,
+            )
+            logger.info(
+                "dialogue QA rewrite accepted (questions=%d, segments=%d)",
+                target_question_count,
+                len(candidate.segments),
+            )
+            return candidate
+        except ValueError as exc:
+            last_err = exc
+            logger.warning(
+                "dialogue QA rewrite attempt %d/%d failed validation: %s",
+                attempt,
+                _DIALOGUE_REWRITE_MAX_ATTEMPTS,
+                exc,
+            )
+
+    if last_err is not None:
+        raise ValueError(f"Dialogue QA rewrite failed: {last_err}")
+    raise ValueError("Dialogue QA rewrite failed")
 
 
 def _emit_progress(
@@ -1137,6 +1339,7 @@ async def generate_video(
     Caller should `copy` the mp4 elsewhere then `workspace.cleanup()`.
     """
     settings = settings or get_settings()
+    _validate_dialogue_mode_settings(settings)
     t0 = time.perf_counter()
 
     problem = MathProblem(problem_text=problem_text)
@@ -1187,6 +1390,18 @@ async def generate_video(
                 settings=settings,
                 plan=plan,
             )
+
+            if settings.dialogue_qa_enabled:
+                script = await _rewrite_script_with_dialogue_qa(
+                    client=client,
+                    settings=settings,
+                    plan=plan,
+                    base_script=script,
+                )
+                script_quality_report = None
+                if settings.consistency_mode != "off":
+                    consistency_report = validate_script_consistency(script.segments)
+
             logger.info("scriptify step done in %.2fs", time.perf_counter() - t_script)
 
             if consistency_report and consistency_report.issues:
@@ -1223,9 +1438,17 @@ async def generate_video(
             tts_results: list[TTSResult] = []
             for seg in script.segments:
                 audio_path = workspace.root / f"seg_{seg.id:02d}.wav"
-                tts_result = await tts.synthesize(
-                    seg.effective_tts_text, output_path=audio_path
-                )
+                if settings.dialogue_qa_enabled:
+                    tts_result = await tts.synthesize(
+                        seg.effective_tts_text,
+                        output_path=audio_path,
+                        speaker_role=seg.speaker,
+                    )
+                else:
+                    tts_result = await tts.synthesize(
+                        seg.effective_tts_text,
+                        output_path=audio_path,
+                    )
                 tts_results.append(tts_result)
 
             chains = group_into_chains(script.segments, tts_results)

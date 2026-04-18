@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -29,6 +29,14 @@ class Segment(BaseModel):
     tts_text: str = Field(
         default="",
         description="Fully phonetic Korean for TTS engine (e.g. '엑스 제곱 더하기 육엑스')",
+    )
+    speaker: Literal["teacher", "student"] = Field(
+        default="teacher",
+        description="Narration speaker role for this segment.",
+    )
+    turn: Literal["explain", "question", "answer"] = Field(
+        default="explain",
+        description="Dialogue turn type for this segment.",
     )
     visual_description: str = Field(
         ...,

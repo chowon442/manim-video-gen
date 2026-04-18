@@ -45,6 +45,14 @@ def test_build_payload_word_timestamp(monkeypatch) -> None:
     assert body.get("timestampType") == "WORD"
 
 
+def test_build_payload_student_voice_override(monkeypatch) -> None:
+    monkeypatch.setenv("MANIM_VIDEO_GEN_INWORLD_TTS_VOICE", "TeacherVoice")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_INWORLD_STUDENT_TTS_VOICE", "StudentVoice")
+    s = Settings()
+    body = _build_payload(s, "hello", speaker_role="student")
+    assert body["voiceId"] == "StudentVoice"
+
+
 @pytest.mark.asyncio
 async def test_synthesize_success_mocked_http(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("INWORLD_TTS_API_KEY", "dummy")

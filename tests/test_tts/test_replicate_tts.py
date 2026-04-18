@@ -60,6 +60,22 @@ def test_build_input_custom_voice(monkeypatch) -> None:
     assert inp["style_instruction"] == "speak slowly"
 
 
+def test_build_input_custom_voice_student_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_MODE", "custom_voice")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_SPEAKER", "Teacher")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_LANGUAGE", "Korean")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_STYLE", "teacher style")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER", "Student")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_LANGUAGE", "auto")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_STYLE", "question style")
+    s = Settings()
+    inp = _build_input(s, "질문입니다", speaker_role="student")
+    assert inp["mode"] == "custom_voice"
+    assert inp["speaker"] == "Student"
+    assert inp["language"] == "auto"
+    assert inp["style_instruction"] == "question style"
+
+
 def test_build_input_voice_clone(monkeypatch) -> None:
     monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_MODE", "voice_clone")
     monkeypatch.setenv(
@@ -74,6 +90,19 @@ def test_build_input_voice_clone(monkeypatch) -> None:
     assert inp["reference_audio"] == "https://example.com/ref.wav"
     assert inp["reference_text"] == "hello world"
     assert inp["speaker"] == "Aiden"
+
+
+def test_build_input_voice_clone_student_speaker_override(monkeypatch) -> None:
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_MODE", "voice_clone")
+    monkeypatch.setenv(
+        "MANIM_VIDEO_GEN_REPLICATE_TTS_REF_AUDIO",
+        "https://example.com/ref.wav",
+    )
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_TTS_SPEAKER", "Teacher")
+    monkeypatch.setenv("MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER", "Student")
+    s = Settings()
+    inp = _build_input(s, "Clone student", speaker_role="student")
+    assert inp["speaker"] == "Student"
 
 
 def test_build_input_voice_clone_missing_audio_raises(monkeypatch) -> None:

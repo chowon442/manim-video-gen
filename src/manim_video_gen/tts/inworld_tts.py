@@ -7,7 +7,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -75,10 +75,19 @@ def _ffmpeg_convert_to_wav(src: Path, dst: Path) -> None:
         ) from exc
 
 
-def _build_payload(settings: Settings, text: str) -> dict[str, Any]:
+def _build_payload(
+    settings: Settings,
+    text: str,
+    *,
+    speaker_role: Literal["teacher", "student"] = "teacher",
+) -> dict[str, Any]:
+    voice_id = (settings.inworld_tts_voice_id or "Hyunwoo").strip() or "Hyunwoo"
+    if speaker_role == "student" and (settings.inworld_student_tts_voice_id or "").strip():
+        voice_id = (settings.inworld_student_tts_voice_id or "").strip()
+
     payload: dict[str, Any] = {
         "text": text,
-        "voiceId": (settings.inworld_tts_voice_id or "Hyunwoo").strip() or "Hyunwoo",
+        "voiceId": voice_id,
         "modelId": (settings.inworld_tts_model_id or "inworld-tts-1.5-max").strip()
         or "inworld-tts-1.5-max",
         "audioConfig": {
@@ -104,12 +113,18 @@ class InworldTTS(TTSProvider):
         self._settings = settings
         self._auth_header = f"Basic {api_key}"
 
-    async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        output_path: Path,
+        speaker_role: Literal["teacher", "student"] = "teacher",
+    ) -> TTSResult:
         if not text.strip():
             raise TTSError("TTS text is empty", stage="tts")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = _build_payload(self._settings, text)
+        payload = _build_payload(self._settings, text, speaker_role=speaker_role)
         headers = {
             "Authorization": self._auth_header,
             "Content-Type": "application/json",

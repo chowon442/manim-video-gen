@@ -129,6 +129,11 @@ class Settings(BaseSettings):
         default="elevenlabs",
         validation_alias="MANIM_VIDEO_GEN_TTS_PROVIDER",
     )
+    dialogue_qa_enabled: bool = Field(
+        default=False,
+        validation_alias="MANIM_VIDEO_GEN_DIALOGUE_QA_ENABLED",
+        description="Enable dialogue mode with student questions and teacher answers.",
+    )
 
     replicate_api_token: str = Field(
         default="",
@@ -162,6 +167,18 @@ class Settings(BaseSettings):
         default="",
         validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_STYLE",
     )
+    replicate_student_tts_speaker: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER",
+    )
+    replicate_student_tts_language: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_LANGUAGE",
+    )
+    replicate_student_tts_style_instruction: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_STYLE",
+    )
     replicate_tts_min_interval_seconds: float = Field(
         default=0.0,
         validation_alias="MANIM_VIDEO_GEN_REPLICATE_TTS_MIN_INTERVAL",
@@ -194,6 +211,10 @@ class Settings(BaseSettings):
     inworld_tts_voice_id: str = Field(
         default="Hyunwoo",
         validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_VOICE",
+    )
+    inworld_student_tts_voice_id: str = Field(
+        default="",
+        validation_alias="MANIM_VIDEO_GEN_INWORLD_STUDENT_TTS_VOICE",
     )
     inworld_tts_speaking_rate: float = Field(
         default=1.0,

@@ -48,7 +48,8 @@ class _DummyClient:
 
 
 class _DummyTTS:
-    async def synthesize(self, text, output_path):
+    async def synthesize(self, text, output_path, speaker_role="teacher"):
+        _ = speaker_role
         output_path.write_bytes(b"wav")
         return TTSResult(audio_path=output_path, duration_seconds=1.0)
 

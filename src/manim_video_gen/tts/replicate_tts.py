@@ -8,7 +8,7 @@ import logging
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import replicate
@@ -81,18 +81,33 @@ def _output_to_url(output: Any) -> str:
     )
 
 
-def _build_input(settings: Settings, text: str) -> dict[str, Any]:
+def _build_input(
+    settings: Settings,
+    text: str,
+    *,
+    speaker_role: Literal["teacher", "student"] = "teacher",
+) -> dict[str, Any]:
     mode = settings.replicate_tts_mode
+    language = (settings.replicate_tts_language or "auto").strip() or "auto"
+    speaker = (settings.replicate_tts_speaker or "Aiden").strip() or "Aiden"
+    style = (settings.replicate_tts_style_instruction or "").strip()
+
+    if speaker_role == "student":
+        if (settings.replicate_student_tts_language or "").strip():
+            language = (settings.replicate_student_tts_language or "").strip()
+        if (settings.replicate_student_tts_speaker or "").strip():
+            speaker = (settings.replicate_student_tts_speaker or "").strip()
+        if (settings.replicate_student_tts_style_instruction or "").strip():
+            style = (settings.replicate_student_tts_style_instruction or "").strip()
+
     payload: dict[str, Any] = {
         "text": text,
         "mode": mode,
-        "language": (settings.replicate_tts_language or "auto").strip() or "auto",
+        "language": language,
     }
 
     if mode == "custom_voice":
-        payload["speaker"] = (
-            settings.replicate_tts_speaker or "Aiden"
-        ).strip() or "Aiden"
+        payload["speaker"] = speaker
     elif mode == "voice_clone":
         ref_audio = (settings.replicate_tts_reference_audio or "").strip()
         if not ref_audio:
@@ -104,7 +119,7 @@ def _build_input(settings: Settings, text: str) -> dict[str, Any]:
         ref_text = (settings.replicate_tts_reference_text or "").strip()
         if ref_text:
             payload["reference_text"] = ref_text
-        spk = (settings.replicate_tts_speaker or "").strip()
+        spk = speaker.strip()
         if spk:
             payload["speaker"] = spk
     elif mode == "voice_design":
@@ -116,7 +131,6 @@ def _build_input(settings: Settings, text: str) -> dict[str, Any]:
             )
         payload["voice_description"] = desc
 
-    style = (settings.replicate_tts_style_instruction or "").strip()
     if style:
         payload["style_instruction"] = style
 
@@ -183,12 +197,22 @@ class ReplicateTTS(TTSProvider):
                 )
                 await asyncio.sleep(wait)
 
-    async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        output_path: Path,
+        speaker_role: Literal["teacher", "student"] = "teacher",
+    ) -> TTSResult:
         if not text.strip():
             raise TTSError("TTS text is empty", stage="tts")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        input_payload = _build_input(self._settings, text)
+        input_payload = _build_input(
+            self._settings,
+            text,
+            speaker_role=speaker_role,
+        )
 
         await self._respect_min_interval()
         try:

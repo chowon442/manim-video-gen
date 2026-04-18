@@ -8,7 +8,7 @@
 - FFmpeg / ffprobe (시스템 PATH; ElevenLabs MP3→WAV 변환 및 합성에 필요)
 - LaTeX (Manim `MathTex`용, TeX Live 등)
 - `OPENROUTER_API_KEY`
-- TTS: 기본 `ELEVENLABS_API_KEY` 또는 `MANIM_VIDEO_GEN_TTS_PROVIDER=azure` 시 `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`
+- TTS: 기본 `ELEVENLABS_API_KEY` 또는 `MANIM_VIDEO_GEN_TTS_PROVIDER=azure|replicate|inworld`에 맞는 API 키
 
 OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `.env`의 `MANIM_VIDEO_GEN_MODEL_*`로 지정합니다.
 
@@ -27,6 +27,12 @@ OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `
 - 나레이션-시각화 정합성 검사(`MANIM_VIDEO_GEN_CONSISTENCY_MODE=off|warn|error`)
 - error 모드 자동복구(`MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR`, `MANIM_VIDEO_GEN_CONSISTENCY_AUTO_REPAIR_MAX_ATTEMPTS`)
 - 대본 품질 가드(`MANIM_VIDEO_GEN_SCRIPT_QUALITY_ENABLED`, `..._PROFILE`, `..._MIN_TOTAL`, `..._MAX_ATTEMPTS`, `..._MAX_SEGMENTS_PER_ATTEMPT`, `..._FAIL_ON_SOFT_AFTER_MAX`)
+- 대화형 QA 모드(`MANIM_VIDEO_GEN_DIALOGUE_QA_ENABLED`)
+  - 켜면 학생 질문+선생 답변이 중간에 삽입된 대화형 스크립트로 재작성
+  - 질문 세그먼트 자막은 `[질문]` prefix 적용(음성 텍스트에는 미적용)
+  - 현재 `replicate` / `inworld` provider만 지원, 그 외 provider면 fail-fast
+  - `replicate` 사용 시 `MANIM_VIDEO_GEN_REPLICATE_STUDENT_TTS_SPEAKER` 필수
+  - `inworld` 사용 시 `MANIM_VIDEO_GEN_INWORLD_STUDENT_TTS_VOICE` 필수
 - 사후 분석 덤프(`MANIM_VIDEO_GEN_DIAGNOSTIC_DUMP=true`) 및 워크스페이스 유지(`MANIM_VIDEO_GEN_KEEP_WORKSPACE=true`)
 
 환경변수 의미 요약:

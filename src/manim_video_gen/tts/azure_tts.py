@@ -6,6 +6,7 @@ import html
 import logging
 import subprocess
 from pathlib import Path
+from typing import Literal
 import httpx
 
 from manim_video_gen.config import Settings
@@ -88,7 +89,14 @@ class AzureSpeechTTS(TTSProvider):
             f"{safe}</voice></speak>"
         )
 
-    async def synthesize(self, text: str, *, output_path: Path) -> TTSResult:
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        output_path: Path,
+        speaker_role: Literal["teacher", "student"] = "teacher",
+    ) -> TTSResult:
+        _ = speaker_role
         if not text.strip():
             raise TTSError("TTS text is empty", stage="tts")
 

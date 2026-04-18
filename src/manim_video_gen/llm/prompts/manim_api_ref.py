@@ -128,6 +128,8 @@ PI ≈ 3.14159,  TAU = 2*PI,  DEGREES = PI/180
 ## Rules
 - Class name MUST be: Segment
 - Implement only construct(self)
+- Do NOT add `if __name__ == "__main__":` blocks, `Segment().render()`, `scene.render()`, or any code after the `class Segment` body. The CLI loads this file as a module; such extras are unnecessary and often cause IndentationError or import failures.
+- End the file when the `Segment` class ends (imports + optional tiny helpers above the class are OK). No trailing executable lines below the class.
 - Avoid os / sys / subprocess / open / socket imports
 - Keep total animation time close to the requested duration_seconds
 - MathTex/Tex raw strings: LaTeX needs one backslash per command. Correct: MathTex(r'\\frac{a}{b}'); wrong: MathTex(r'\\\\frac{a}{b}') (double backslash before frac/sqrt/pm breaks latex).

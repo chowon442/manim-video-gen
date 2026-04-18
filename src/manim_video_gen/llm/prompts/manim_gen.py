@@ -123,6 +123,7 @@ def manim_system_prompt() -> str:
         + "\n## Few-shot examples (follow structure and imports)\n"
         + MANIM_FEW_SHOT_EXAMPLES
         + "\nOutput ONLY python code (no markdown fences).\n"
+        + "No `if __name__ == \"__main__\":`, no `render()` calls, no test harness — only imports and `class Segment(Scene)`.\n"
     )
 
 
@@ -157,7 +158,7 @@ def build_manim_user_prompt(
         f"visual_params: {json.dumps(segment.visual_params, ensure_ascii=False)}\n"
         f"prev_scene_state: {json.dumps([s.model_dump() for s in segment.prev_scene_state] if segment.prev_scene_state else None, ensure_ascii=False)}\n"
         f"{prior}\n"
-        "Generate:\n"
+        "Generate (nothing after the Segment class; no __main__ block):\n"
         "from manim import *\n\n"
         "class Segment(Scene):\n"
         "    def construct(self):\n"

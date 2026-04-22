@@ -15,7 +15,7 @@ if str(_SRC) not in sys.path:
 
 from manim_video_gen.config import get_settings
 from manim_video_gen.llm.client import OpenRouterClient
-from manim_video_gen.llm.prompts.scriptify import SCRIPTIFY_SYSTEM_PROMPT, scriptify_user_prompt
+from manim_video_gen.llm.prompts.scriptify import scriptify_system_prompt, scriptify_user_prompt
 from manim_video_gen.llm.prompts.solve import SOLVE_SYSTEM_PROMPT, solve_user_prompt
 from manim_video_gen.models.script import VideoScript
 from manim_video_gen.models.solution import SolutionPlan
@@ -41,7 +41,7 @@ async def main() -> int:
     script = await client.complete_json_model(
         model=settings.model_script,
         messages=[
-            {"role": "system", "content": SCRIPTIFY_SYSTEM_PROMPT},
+            {"role": "system", "content": scriptify_system_prompt(settings)},
             {"role": "user", "content": scriptify_user_prompt(plan)},
         ],
         response_model=VideoScript,

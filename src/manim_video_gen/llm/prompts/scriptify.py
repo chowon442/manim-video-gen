@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from manim_video_gen.config import Settings
 from manim_video_gen.models.solution import SolutionPlan
 
 SCRIPTIFY_SYSTEM_PROMPT = """You are a script writer for a Korean math explanation video.
@@ -205,6 +206,36 @@ Each segment is rendered as an independent Manim scene. To prevent jarring jumps
 4. Pacing: Prefer one equation_derivation segment for 2–4 chained algebraic steps instead of many tiny segments.
    Avoid splitting one idea across too many segments; avoid cramming unrelated ideas into one segment.
 """
+
+SCRIPTIFY_GROK_TTS_TAG_APPENDIX = """## xAI Grok TTS speech tags (ONLY when filling tts_text)
+
+The TTS engine is xAI Grok TTS. Put speech tags **only inside `tts_text`**, never in `narration` (subtitles cannot render tags).
+
+Principles for Korean math explanation:
+- Use tags **sparingly**: at clause boundaries, before a key result, or for a natural breath. Do not stack many tags in one sentence.
+- Avoid theatrical tags like [laugh] / [giggle] unless truly appropriate; prefer [pause], [breath], or <emphasis> for teaching tone.
+- Keep Korean phonetic rules from the main prompt; tags wrap or interrupt **spoken Korean**, not raw LaTeX.
+
+**Inline tags** (insert at a point in the text):
+[pause] [long-pause] [hum-tune] [laugh] [chuckle] [giggle] [cry] [tsk] [tongue-click] [lip-smack] [breath] [inhale] [exhale] [sigh]
+
+Example (tts_text only): "먼저 식을 정리해 보겠습니다. [pause] 인수분해하면 엑스 더하기 삼의 제곱은 영이 됩니다."
+
+**Wrapping tags** (wrap a span to change delivery):
+<soft> <whisper> <loud> <build-intensity> <decrease-intensity> <higher-pitch> <lower-pitch> <slow> <fast> <sing-song> <singing> <laugh-speak> <emphasis>
+
+Example (tts_text only): "따라서 [breath] <emphasis>근은 마이너스 삼 하나입니다.</emphasis> 이제 그래프로 확인해 봅시다."
+
+Do not put wrapping tags inside `narration`. Do not leave unmatched `<...>` / `</...>` pairs in tts_text.
+"""
+
+
+def scriptify_system_prompt(settings: Settings) -> str:
+    """Full scriptify system prompt, including Grok TTS tag appendix when provider is grok/xai."""
+    provider = (settings.tts_provider or "").strip().lower()
+    if provider in ("grok", "xai"):
+        return SCRIPTIFY_SYSTEM_PROMPT + "\n\n" + SCRIPTIFY_GROK_TTS_TAG_APPENDIX
+    return SCRIPTIFY_SYSTEM_PROMPT
 
 
 def scriptify_user_prompt(plan: SolutionPlan) -> str:

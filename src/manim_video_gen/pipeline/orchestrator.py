@@ -19,7 +19,7 @@ from manim_video_gen.llm.prompts.manim_gen import (
     manim_system_prompt,
 )
 from manim_video_gen.llm.prompts.scriptify import (
-    SCRIPTIFY_SYSTEM_PROMPT,
+    scriptify_system_prompt,
     scriptify_user_prompt,
 )
 from manim_video_gen.llm.prompts.solve import SOLVE_SYSTEM_PROMPT, solve_user_prompt
@@ -31,6 +31,7 @@ from manim_video_gen.models.script import (
     TTSResult,
     VideoScript,
 )
+from manim_video_gen.exceptions import RenderError
 from manim_video_gen.models.solution import SolutionPlan
 from manim_video_gen.pipeline.chain_grouper import group_into_chains
 from manim_video_gen.pipeline.diagnostics import (
@@ -45,6 +46,7 @@ from manim_video_gen.video.code_validator import (
     normalize_llm_manim_tex_backslashes,
     validate_and_test_render,
 )
+from manim_video_gen.video.latex_json_sanitize import sanitize_video_script_visual_params
 from manim_video_gen.video.composer import VideoComposer, ffprobe_duration_seconds
 from manim_video_gen.video.duration_adjuster import adjust_duration_safe
 from manim_video_gen.video.duration_adjuster import ensure_scene_cleanup
@@ -501,7 +503,9 @@ def split_segment_for_transition_tail(seg: Segment) -> list[Segment]:
     return [lead, tail]
 
 
-def split_script_transition_tails(script: VideoScript) -> VideoScript:
+def split_script_transition_tails(
+    script: VideoScript, settings: Settings
+) -> VideoScript:
     new_segments: list[Segment] = []
     for seg in script.segments:
         new_segments.extend(split_segment_for_transition_tail(seg))
@@ -511,20 +515,25 @@ def split_script_transition_tails(script: VideoScript) -> VideoScript:
     for i, s in enumerate(new_segments):
         fixed.append(s.model_copy(update={"id": i}))
     split_script = script.model_copy(update={"segments": fixed})
-    return _ensure_tts_text(split_script)
+    return _ensure_tts_text(split_script, settings)
 
 
-def _ensure_tts_text(script: VideoScript) -> VideoScript:
+def _ensure_tts_text(script: VideoScript, settings: Settings) -> VideoScript:
     """Ensure every segment has a usable tts_text.
 
-    If the LLM provided tts_text, apply polish as safety net.
+    If the LLM provided tts_text, apply polish as safety net (except Grok/xAI,
+    where speech tags must be preserved).
     Otherwise, derive tts_text from narration via polish_tts_text.
     """
+    provider = (settings.tts_provider or "").strip().lower()
+    use_grok_tags = provider in ("grok", "xai")
     updated = []
     for s in script.segments:
         tts = s.tts_text.strip() if s.tts_text else ""
         if not tts:
             tts = polish_tts_text(s.narration)
+        elif use_grok_tags:
+            tts = tts.strip()
         else:
             tts = polish_tts_text(tts)
         updated.append(s.model_copy(update={"tts_text": tts}))
@@ -654,12 +663,12 @@ async def _scriptify_with_consistency_repair(
     script = await client.complete_json_model(
         model=settings.model_script,
         messages=[
-            {"role": "system", "content": SCRIPTIFY_SYSTEM_PROMPT},
+            {"role": "system", "content": scriptify_system_prompt(settings)},
             {"role": "user", "content": scriptify_user_prompt(plan)},
         ],
         response_model=VideoScript,
     )
-    script = _ensure_tts_text(script)
+    script = _ensure_tts_text(script, settings)
 
     if settings.consistency_mode == "off":
         return script, None
@@ -684,7 +693,7 @@ async def _scriptify_with_consistency_repair(
         repaired = await client.complete_json_model(
             model=settings.model_script,
             messages=[
-                {"role": "system", "content": SCRIPTIFY_SYSTEM_PROMPT},
+                {"role": "system", "content": scriptify_system_prompt(settings)},
                 {
                     "role": "user",
                     "content": _consistency_error_prompt(
@@ -696,7 +705,7 @@ async def _scriptify_with_consistency_repair(
             ],
             response_model=VideoScript,
         )
-        repaired = _ensure_tts_text(repaired)
+        repaired = _ensure_tts_text(repaired, settings)
         new_report = validate_script_consistency(repaired.segments)
         if not any(i.severity == "error" for i in new_report.issues):
             return repaired, new_report
@@ -718,7 +727,7 @@ async def _scriptify_with_quality_guard(
         settings=settings,
         plan=plan,
     )
-    script = split_script_transition_tails(script)
+    script = split_script_transition_tails(script, settings)
 
     if settings.consistency_mode != "off":
         consistency_report = validate_script_consistency(script.segments)
@@ -773,7 +782,7 @@ async def _scriptify_with_quality_guard(
         repaired = await client.complete_json_model(
             model=settings.model_script,
             messages=[
-                {"role": "system", "content": SCRIPTIFY_SYSTEM_PROMPT},
+                {"role": "system", "content": scriptify_system_prompt(settings)},
                 {
                     "role": "user",
                     "content": _script_quality_error_prompt(
@@ -787,8 +796,8 @@ async def _scriptify_with_quality_guard(
             response_model=VideoScript,
         )
 
-        repaired = _ensure_tts_text(repaired)
-        repaired = split_script_transition_tails(repaired)
+        repaired = _ensure_tts_text(repaired, settings)
+        repaired = split_script_transition_tails(repaired, settings)
 
         changed_ids = _changed_segment_ids(current_script, repaired)
         if len(changed_ids) > max_segments:
@@ -915,22 +924,17 @@ async def _llm_manim_with_retries_counted(
     )
 
 
-async def _render_standalone_segment(
+async def _build_manim_code_for_segment(
     *,
     seg: Segment,
-    tts_result: TTSResult,
     duration: float,
     workspace: SessionWorkspace,
     registry: TemplateRegistry,
     client: OpenRouterClient,
-    composer: VideoComposer,
     settings: Settings,
     cleanup_enabled: bool = True,
-) -> tuple[Path, Path, str, int]:
-    """Returns (merged_mp4_path, video_only_path, manim_code, llm_manim_retries)."""
-    if settings.disable_prev_scene_state and seg.prev_scene_state is not None:
-        seg = seg.model_copy(update={"prev_scene_state": None})
-
+) -> tuple[str, int]:
+    """Build Manim Python source; ``llm_retries`` is 0 for template path."""
     llm_retries = 0
     force_llm = _requires_custom_scene(seg)
     if force_llm:
@@ -957,6 +961,75 @@ async def _render_standalone_segment(
         )
         llm_retries = n_try
         code = ensure_scene_cleanup(code, enabled=cleanup_enabled)
+    return code, llm_retries
+
+
+async def _smoke_test_manim_for_script(
+    *,
+    script: VideoScript,
+    workspace: SessionWorkspace,
+    registry: TemplateRegistry,
+    client: OpenRouterClient,
+    settings: Settings,
+) -> None:
+    """Fail fast on broken LaTeX before TTS is billed."""
+    for seg in script.segments:
+        s_use = (
+            seg.model_copy(update={"prev_scene_state": None})
+            if settings.disable_prev_scene_state and seg.prev_scene_state
+            else seg
+        )
+        est = max(4.0, min(120.0, max(len(seg.narration or ""), 1) * 0.07))
+        code, _ = await _build_manim_code_for_segment(
+            seg=s_use,
+            duration=est,
+            workspace=workspace,
+            registry=registry,
+            client=client,
+            settings=settings,
+            cleanup_enabled=True,
+        )
+        ok, err = await asyncio.to_thread(
+            validate_and_test_render,
+            code=code,
+            workspace=workspace.root,
+            settings=settings,
+            stem=f"pretts_smoke_{seg.id:02d}",
+        )
+        if not ok:
+            raise RenderError(
+                f"Manim smoke failed before TTS (segment {seg.id})",
+                stage="render",
+                segment_id=seg.id,
+                detail=err,
+            )
+
+
+async def _render_standalone_segment(
+    *,
+    seg: Segment,
+    tts_result: TTSResult,
+    duration: float,
+    workspace: SessionWorkspace,
+    registry: TemplateRegistry,
+    client: OpenRouterClient,
+    composer: VideoComposer,
+    settings: Settings,
+    cleanup_enabled: bool = True,
+) -> tuple[Path, Path, str, int]:
+    """Returns (merged_mp4_path, video_only_path, manim_code, llm_manim_retries)."""
+    if settings.disable_prev_scene_state and seg.prev_scene_state is not None:
+        seg = seg.model_copy(update={"prev_scene_state": None})
+
+    code, llm_retries = await _build_manim_code_for_segment(
+        seg=seg,
+        duration=duration,
+        workspace=workspace,
+        registry=registry,
+        client=client,
+        settings=settings,
+        cleanup_enabled=cleanup_enabled,
+    )
 
     scene_path = workspace.root / f"scene_{seg.id:02d}.py"
     video_only = await asyncio.to_thread(
@@ -1217,6 +1290,23 @@ async def generate_video(
                 )
                 raise ValueError(
                     f"Consistency validation failed: [{first_error.code}] seg={first_error.segment_id} {first_error.message}"
+                )
+
+            script = sanitize_video_script_visual_params(script)
+            if settings.manim_smoke_test_before_tts:
+                _emit_progress(
+                    on_progress,
+                    {
+                        "stage": "manim_smoke",
+                        "message": "TTS 전 Manim 스모크",
+                    },
+                )
+                await _smoke_test_manim_for_script(
+                    script=script,
+                    workspace=workspace,
+                    registry=registry,
+                    client=client,
+                    settings=settings,
                 )
 
             _emit_progress(on_progress, {"stage": "tts", "message": "TTS 생성 중"})

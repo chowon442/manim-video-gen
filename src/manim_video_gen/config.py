@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # CWD와 무관하게 저장소 루트의 .env를 읽음 (예: scripts/에서 스크립트 실행 시에도 Voice ID 적용)
@@ -88,6 +88,15 @@ class Settings(BaseSettings):
         default="h",
         validation_alias="MANIM_VIDEO_GEN_MANIM_QUALITY_HIGH",
     )
+    manim_smoke_test_before_tts: bool = Field(
+        default=True,
+        validation_alias="MANIM_VIDEO_GEN_MANIM_SMOKE_TEST_BEFORE_TTS",
+        description=(
+            "Run a low-quality Manim smoke render per script segment after the script "
+            "is finalized and before TTS, so bad LaTeX fails early (avoids TTS cost on "
+            "unrenderable math)."
+        ),
+    )
 
     crossfade_duration: float = Field(
         default=0.2,
@@ -125,7 +134,9 @@ class Settings(BaseSettings):
         ),
     )
 
-    tts_provider: Literal["elevenlabs", "azure", "replicate", "inworld"] = Field(
+    tts_provider: Literal[
+        "elevenlabs", "azure", "replicate", "inworld", "grok", "xai"
+    ] = Field(
         default="elevenlabs",
         validation_alias="MANIM_VIDEO_GEN_TTS_PROVIDER",
     )
@@ -207,6 +218,22 @@ class Settings(BaseSettings):
         default="NONE",
         validation_alias="MANIM_VIDEO_GEN_INWORLD_TTS_TIMESTAMP_TYPE",
         description="Inworld non-streaming: WORD enables timestampInfo (not mapped to word_timestamps yet).",
+    )
+
+    xai_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "XAI_API_KEY",
+            "MANIM_VIDEO_GEN_XAI_API_KEY",
+        ),
+    )
+    xai_tts_voice_id: str = Field(
+        default="Ara",
+        validation_alias="MANIM_VIDEO_GEN_XAI_TTS_VOICE",
+    )
+    xai_tts_language: str = Field(
+        default="ko",
+        validation_alias="MANIM_VIDEO_GEN_XAI_TTS_LANGUAGE",
     )
 
     burn_subtitles: bool = Field(

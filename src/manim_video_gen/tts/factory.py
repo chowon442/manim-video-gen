@@ -6,6 +6,7 @@ from manim_video_gen.config import Settings
 from manim_video_gen.tts.azure_tts import AzureSpeechTTS
 from manim_video_gen.tts.base import TTSProvider
 from manim_video_gen.tts.elevenlabs import ElevenLabsTTS
+from manim_video_gen.tts.grok_tts import GrokTTS
 from manim_video_gen.tts.inworld_tts import InworldTTS
 from manim_video_gen.tts.replicate_tts import ReplicateTTS
 
@@ -18,4 +19,6 @@ def get_tts_provider(settings: Settings) -> TTSProvider:
         return ReplicateTTS(settings)
     if provider == "inworld":
         return InworldTTS(settings)
+    if provider in ("grok", "xai"):
+        return GrokTTS(settings)
     return ElevenLabsTTS(settings)

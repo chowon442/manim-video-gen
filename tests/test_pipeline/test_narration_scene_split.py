@@ -14,6 +14,7 @@ if find_spec("replicate") is None:
     sys.modules["replicate"] = _replicate_mod
     sys.modules["replicate.exceptions"] = _replicate_exc_mod
 
+from manim_video_gen.config import Settings
 from manim_video_gen.models.script import Segment, VideoScript
 from manim_video_gen.pipeline.orchestrator import (
     split_segment_for_transition_tail,
@@ -77,7 +78,7 @@ def test_split_script_transition_tails_repolishes_tts_text():
         prev_scene_state=None,
     )
     script = VideoScript(title="t", segments=[src])
-    out = split_script_transition_tails(script)
+    out = split_script_transition_tails(script, Settings())
     assert len(out.segments) == 2
     for seg in out.segments:
         assert seg.tts_text.strip()
@@ -97,6 +98,9 @@ def test_split_tail_replaces_spoken_parenthesis_in_tts_text():
         },
         prev_scene_state=None,
     )
-    out = split_script_transition_tails(VideoScript(title="t", segments=[src]))
+    out = split_script_transition_tails(
+        VideoScript(title="t", segments=[src]),
+        Settings(),
+    )
     assert len(out.segments) == 2
     assert "괄호" not in out.segments[0].tts_text

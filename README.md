@@ -8,7 +8,7 @@
 - FFmpeg / ffprobe (시스템 PATH; ElevenLabs MP3→WAV 변환 및 합성에 필요)
 - LaTeX (Manim `MathTex`용, TeX Live 등)
 - `OPENROUTER_API_KEY`
-- TTS: 기본 `ELEVENLABS_API_KEY` 또는 `MANIM_VIDEO_GEN_TTS_PROVIDER=azure` 시 `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`
+- TTS: 기본 `ELEVENLABS_API_KEY` 또는 `MANIM_VIDEO_GEN_TTS_PROVIDER=azure` 시 `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` / `MANIM_VIDEO_GEN_TTS_PROVIDER=grok`(또는 `xai`) 시 `XAI_API_KEY`, 선택 `MANIM_VIDEO_GEN_XAI_TTS_VOICE`, `MANIM_VIDEO_GEN_XAI_TTS_LANGUAGE` ([xAI TTS](https://docs.x.ai/developers/model-capabilities/audio/text-to-speech))
 
 OpenRouter는 공식 OpenAI 호환 REST(`httpx`)로 호출합니다. 모델은 `.env`의 `MANIM_VIDEO_GEN_MODEL_*`로 지정합니다.
 

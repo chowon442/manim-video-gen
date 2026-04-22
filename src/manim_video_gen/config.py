@@ -88,15 +88,6 @@ class Settings(BaseSettings):
         default="h",
         validation_alias="MANIM_VIDEO_GEN_MANIM_QUALITY_HIGH",
     )
-    manim_smoke_test_before_tts: bool = Field(
-        default=True,
-        validation_alias="MANIM_VIDEO_GEN_MANIM_SMOKE_TEST_BEFORE_TTS",
-        description=(
-            "Run a low-quality Manim smoke render per script segment after the script "
-            "is finalized and before TTS, so bad LaTeX fails early (avoids TTS cost on "
-            "unrenderable math)."
-        ),
-    )
 
     crossfade_duration: float = Field(
         default=0.2,

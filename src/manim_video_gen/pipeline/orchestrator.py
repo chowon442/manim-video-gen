@@ -31,7 +31,6 @@ from manim_video_gen.models.script import (
     TTSResult,
     VideoScript,
 )
-from manim_video_gen.exceptions import RenderError
 from manim_video_gen.models.solution import SolutionPlan
 from manim_video_gen.pipeline.chain_grouper import group_into_chains
 from manim_video_gen.pipeline.diagnostics import (
@@ -964,47 +963,6 @@ async def _build_manim_code_for_segment(
     return code, llm_retries
 
 
-async def _smoke_test_manim_for_script(
-    *,
-    script: VideoScript,
-    workspace: SessionWorkspace,
-    registry: TemplateRegistry,
-    client: OpenRouterClient,
-    settings: Settings,
-) -> None:
-    """Fail fast on broken LaTeX before TTS is billed."""
-    for seg in script.segments:
-        s_use = (
-            seg.model_copy(update={"prev_scene_state": None})
-            if settings.disable_prev_scene_state and seg.prev_scene_state
-            else seg
-        )
-        est = max(4.0, min(120.0, max(len(seg.narration or ""), 1) * 0.07))
-        code, _ = await _build_manim_code_for_segment(
-            seg=s_use,
-            duration=est,
-            workspace=workspace,
-            registry=registry,
-            client=client,
-            settings=settings,
-            cleanup_enabled=True,
-        )
-        ok, err = await asyncio.to_thread(
-            validate_and_test_render,
-            code=code,
-            workspace=workspace.root,
-            settings=settings,
-            stem=f"pretts_smoke_{seg.id:02d}",
-        )
-        if not ok:
-            raise RenderError(
-                f"Manim smoke failed before TTS (segment {seg.id})",
-                stage="render",
-                segment_id=seg.id,
-                detail=err,
-            )
-
-
 async def _render_standalone_segment(
     *,
     seg: Segment,
@@ -1293,21 +1251,6 @@ async def generate_video(
                 )
 
             script = sanitize_video_script_visual_params(script)
-            if settings.manim_smoke_test_before_tts:
-                _emit_progress(
-                    on_progress,
-                    {
-                        "stage": "manim_smoke",
-                        "message": "TTS 전 Manim 스모크",
-                    },
-                )
-                await _smoke_test_manim_for_script(
-                    script=script,
-                    workspace=workspace,
-                    registry=registry,
-                    client=client,
-                    settings=settings,
-                )
 
             _emit_progress(on_progress, {"stage": "tts", "message": "TTS 생성 중"})
             tts_results: list[TTSResult] = []

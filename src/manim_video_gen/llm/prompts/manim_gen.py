@@ -113,6 +113,55 @@ class Segment(Scene):
         self.play(Create(g), run_time=0.9)
         self.play(FadeIn(region), run_time=0.8)
         self.wait(0.4)
+
+### Example J — TransformMatchingTex with {{ }} groups
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        src = MathTex(r"{{x^2}} + {{6x}} + {{9}} = 0", font_size=48)
+        dst = MathTex(r"({{x}} + {{3}})^2 = 0", font_size=48)
+        self.play(Write(src), run_time=1.2)
+        self.play(TransformMatchingTex(src, dst), run_time=1.4)
+        self.wait(0.6)
+
+### Example K — ValueTracker drives a changing number
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        tracker = ValueTracker(0.0)
+        label = Text("x =", font_size=32).shift(LEFT * 0.8)
+        num = DecimalNumber(0.0, num_decimal_places=2, font_size=40)
+        num.add_updater(
+            lambda m: m.set_value(tracker.get_value()).next_to(
+                label, RIGHT, buff=0.2
+            )
+        )
+        self.add(label, num)
+        self.play(tracker.animate.set_value(3.14), run_time=1.8, rate_func=smooth)
+        num.clear_updaters()
+        self.wait(0.5)
+
+### Example L — LaggedStart for staggered appearance
+from manim import *
+
+class Segment(Scene):
+    def construct(self):
+        dots = VGroup(*[Dot(color=BLUE) for _ in range(5)]).arrange(RIGHT, buff=0.5)
+        labels = VGroup(*[
+            MathTex(rf"x_{{{i}}}", font_size=32).next_to(dots[i], DOWN, buff=0.15)
+            for i in range(5)
+        ])
+        self.play(
+            LaggedStart(*[GrowFromCenter(d) for d in dots], lag_ratio=0.15),
+            run_time=1.4,
+        )
+        self.play(
+            LaggedStart(*[Write(l) for l in labels], lag_ratio=0.1),
+            run_time=1.2,
+        )
+        self.wait(0.4)
 """
 
 

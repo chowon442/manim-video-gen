@@ -1,4 +1,7 @@
-"""Manim Community Edition API hints injected into Manim code-generation prompts."""
+"""Manim Community Edition API hints injected into Manim code-generation prompts.
+
+Portions distilled from https://github.com/adithya-s-k/manim_skill (MIT).
+"""
 
 MANIM_API_REFERENCE_TEXT = """
 You MUST use Manim **Community Edition** (from manim import *). Do NOT use 3b1b legacy names.
@@ -124,6 +127,49 @@ UP=(0,1,0), DOWN=(0,-1,0), LEFT=(-1,0,0), RIGHT=(1,0,0)
 UL, UR, DL, DR  (diagonals)
 ORIGIN=(0,0,0)
 PI ≈ 3.14159,  TAU = 2*PI,  DEGREES = PI/180
+
+## Transform details
+- Transform(A, B): A morphs into B's shape, but variable A still references the same mobject (B is NOT added to the scene).
+- ReplacementTransform(A, B): A is removed and B is added — clearer variable semantics; usually preferred.
+- TransformMatchingTex(A, B): smooth token-wise morph between MathTex; use {{token}} brace groups for best matching when from_latex/to_latex share subexpressions.
+- TransformMatchingShapes(A, B): shape-based matching (e.g. Text); use when not using LaTeX.
+- Transform(..., path_arc=PI/2): curved morph path; useful for equation→diagram transitions.
+
+## Animation composition
+- AnimationGroup(*anims, lag_ratio=0.0): simultaneous (0), staggered overlap (0.2–0.5), sequential (1.0).
+- LaggedStart(*anims, lag_ratio=0.05): convenience wrapper; good for many objects appearing in sequence.
+- LaggedStartMap(Create, vgroup, lag_ratio=0.1): apply one animation type to all children with stagger.
+- Succession(*anims): play one after another; like multiple self.play() calls but one unit.
+- Recommended lag_ratio for polish: 0.05–0.2 (higher feels slow).
+- run_time on AnimationGroup applies to the whole group and is distributed across children.
+
+## Timing / rate functions
+- Common rate_func: smooth (default feel), linear (constant speed), rush_into / rush_from (accel/decel), there_and_back (emphasis pulse), ease_in_*, ease_out_*, ease_in_out_* (quad/cubic/expo/circ/sine/back/bounce).
+- Prefer run_time 0.5–3s per major motion; split long explanations across multiple self.play() calls.
+- Use self.wait(t) to pad to audio/TTS length; do not inflate run_time just to fill silence.
+
+## LaTeX advanced
+- Multi-part MathTex: MathTex("a", "^2", "+", "b", "^2", "=", "c", "^2") lets you index eq[0], eq[1], ... for per-part styling.
+- {{token}} brace groups: key for TransformMatchingTex; e.g. "{{a}} x^2 + {{b}} x + {{c}} = 0".
+- Coloring: eq.set_color_by_tex(r"\\pi", BLUE); MathTex(..., substrings_to_isolate=["x"]) then set_color_by_tex for repeated symbols; or eq[0][2].set_color(RED).
+- MathTex for pure math; Tex(r"mixed $x^2$ text") when mixing prose and math.
+- get_part_by_tex works reliably on parts created via {{token}} or substrings_to_isolate.
+
+## Dynamic: ValueTracker / always_redraw
+- ValueTracker(v): get_value(), set_value(), tracker.animate.set_value(new).
+- Updaters: mob.add_updater(lambda m: m.set_value(tracker.get_value())) for DecimalNumber etc.
+- always_redraw(lambda: ...): rebuild mobject each frame for complex following shapes.
+- Call mob.clear_updaters() when done to avoid stray per-frame updates in later plays.
+- Useful for counting numbers, parameter sweeps, and point-following visuals.
+
+## Common pitfalls
+- MathTex/Tex: always r"..." in Python; one backslash per LaTeX command (JSON escaping is separate).
+- Keep Korean/CJK out of MathTex when possible; use Text() beside. If needed: xelatex + \\text{...}.
+- After Transform(A, B), the Python name still points at A (now looking like B).
+- TransformMatchingTex with no shared {{token}} parts may look like a crossfade; consider FadeTransform explicitly.
+- axes.plot across a discontinuity (e.g. 1/x through 0) can break; split x_range or use discontinuities=[x0].
+- Heavy add_updater(next_to/...) every frame: consider suspend_updating() during a play if needed.
+- Never put slow I/O or heavy work inside self.play() — construct runs at import/render time.
 
 ## Rules
 - Class name MUST be: Segment

@@ -35,6 +35,14 @@ def ffprobe_duration_seconds(path: Path) -> float:
     return float(meta["format"]["duration"])
 
 
+def _merge_padding_seconds(video_s: float, audio_s: float) -> tuple[float, float, float]:
+    """Return (video_tpad, audio_apad, target) so both match max(v, a)."""
+    t = max(float(video_s), float(audio_s))
+    v_pad = max(0.0, t - float(video_s))
+    a_pad = max(0.0, t - float(audio_s))
+    return v_pad, a_pad, t
+
+
 class VideoComposer:
     def __init__(
         self,
@@ -99,92 +107,68 @@ class VideoComposer:
         subtitle_path: Path | None = None,
         subtitle_safe_area_px: int = 0,
     ) -> Path:
+        """Merge video and TTS; pad the shorter side so the full narration is kept.
+
+        Uses tpad (clone last frame) for video and apad (silence) for audio. Avoids
+        ``-shortest``, which would truncate whichever stream is longer.
+        """
         output_path.parent.mkdir(parents=True, exist_ok=True)
         video_path = Path(video_path).resolve()
         audio_path = Path(audio_path).resolve()
         output_path = Path(output_path).resolve()
         safe_px = max(0, int(subtitle_safe_area_px))
 
-        if subtitle_path is not None:
-            sp = Path(subtitle_path).resolve()
-            if not sp.is_file():
-                raise FileNotFoundError(f"Subtitle file not found: {sp}")
-            # Use basename + cwd so Windows paths with spaces/colons work in -vf ass=
+        v_dur = ffprobe_duration_seconds(video_path)
+        a_dur = ffprobe_duration_seconds(audio_path)
+        v_pad, a_pad, t_target = _merge_padding_seconds(v_dur, a_dur)
+        if v_pad > 0.02 or a_pad > 0.02:
+            logger.info(
+                "merge_segment: pad to max %.3fs (video +%.3fs, audio +%.3fs) "
+                "from v=%.3fs a=%.3fs",
+                t_target,
+                v_pad,
+                a_pad,
+                v_dur,
+                a_dur,
+            )
+
+        def _vf_base() -> str:
+            if subtitle_path is not None:
+                sp = Path(subtitle_path).resolve()
+                if not sp.is_file():
+                    raise FileNotFoundError(f"Subtitle file not found: {sp}")
+                if safe_px > 0:
+                    return (
+                        f"scale=iw:ih-{safe_px}:flags=lanczos,"
+                        f"pad=iw:ih+{safe_px}:0:0:black,"
+                        f"ass={sp.name}"
+                    )
+                return f"ass={sp.name}"
             if safe_px > 0:
-                vf = (
-                    f"scale=iw:ih-{safe_px}:flags=lanczos,"
-                    f"pad=iw:ih+{safe_px}:0:0:black,"
-                    f"ass={sp.name}"
-                )
-            else:
-                vf = f"ass={sp.name}"
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(video_path),
-                "-i",
-                str(audio_path),
-                "-vf",
-                vf,
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "18",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-shortest",
-                str(output_path),
-            ]
-            self._run(cmd, cwd=str(sp.parent))
-            return output_path
+                return f"scale=iw:ih-{safe_px}:flags=lanczos,pad=iw:ih+{safe_px}:0:0:black"
+            return "null"
 
-        if safe_px > 0:
-            vf = f"scale=iw:ih-{safe_px}:flags=lanczos,pad=iw:ih+{safe_px}:0:0:black"
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(video_path),
-                "-i",
-                str(audio_path),
-                "-vf",
-                vf,
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "18",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-shortest",
-                str(output_path),
-            ]
-            self._run(cmd)
-            return output_path
+        vf0 = _vf_base()
+        if v_pad > 0:
+            tpad = f"tpad=stop_mode=clone:stop_duration={v_pad:.6f}"
+            vf = f"{vf0},{tpad}" if vf0 != "null" else tpad
+        else:
+            vf = None if vf0 == "null" else vf0
 
-        cmd = [
+        base_cmd: list[str] = [
             "ffmpeg",
             "-y",
             "-i",
             str(video_path),
             "-i",
             str(audio_path),
+        ]
+        if vf is not None:
+            base_cmd.extend(["-vf", vf])
+        if a_pad > 0:
+            base_cmd.extend(["-af", f"apad=pad_dur={a_pad:.6f}"])
+
+        tail = [
             "-map",
             "0:v:0",
             "-map",
@@ -199,10 +183,15 @@ class VideoComposer:
             "yuv420p",
             "-c:a",
             "aac",
-            "-shortest",
             str(output_path),
         ]
-        self._run(cmd)
+        base_cmd.extend(tail)
+
+        if subtitle_path is not None:
+            sp = Path(subtitle_path).resolve()
+            self._run(base_cmd, cwd=str(sp.parent))
+        else:
+            self._run(base_cmd)
         return output_path
 
     def mix_background_music(

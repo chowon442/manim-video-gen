@@ -179,8 +179,9 @@ class GrokTTS(TTSProvider):
         mp3_path = output_path.with_suffix(".mp3")
         mp3_path.write_bytes(mp3_bytes)
         try:
-            duration = _ffprobe_duration_seconds(mp3_path)
             _ffmpeg_convert_to_wav(mp3_path, output_path)
+            # Length of the merged audio file (WAV), not MP3 — matches Manim mux.
+            duration = _ffprobe_duration_seconds(output_path)
         finally:
             mp3_path.unlink(missing_ok=True)
 

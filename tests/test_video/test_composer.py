@@ -29,7 +29,13 @@ def test_merge_segment_includes_safe_area_filter_when_subtitle_present(tmp_path:
     audio.write_bytes(b"y")
     sub.write_text("dummy", encoding="utf-8")
 
-    with patch.object(VideoComposer, "_run") as run_mock:
+    with (
+        patch(
+            "manim_video_gen.video.composer.ffprobe_duration_seconds",
+            return_value=1.0,
+        ),
+        patch.object(VideoComposer, "_run") as run_mock,
+    ):
         composer.merge_segment(
             video_path=video,
             audio_path=audio,
@@ -39,10 +45,69 @@ def test_merge_segment_includes_safe_area_filter_when_subtitle_present(tmp_path:
         )
 
     cmd = run_mock.call_args[0][0]
+    assert "-shortest" not in cmd
     vf = cmd[cmd.index("-vf") + 1]
     assert "scale=iw:ih-160" in vf
     assert "pad=iw:ih+160" in vf
     assert "ass=s.ass" in vf
+
+
+def test_merge_segment_extends_shorter_video_with_tpad(tmp_path: Path) -> None:
+    composer = VideoComposer(crossfade_duration=0.0)
+    video = tmp_path / "v.mp4"
+    audio = tmp_path / "a.wav"
+    out = tmp_path / "o.mp4"
+    video.write_bytes(b"x")
+    audio.write_bytes(b"y")
+
+    def _durations(p: Path) -> float:
+        return 7.0 if p.name == "v.mp4" else 9.0
+
+    with (
+        patch(
+            "manim_video_gen.video.composer.ffprobe_duration_seconds", side_effect=_durations
+        ),
+        patch.object(VideoComposer, "_run") as run_mock,
+    ):
+        composer.merge_segment(
+            video_path=video, audio_path=audio, output_path=out
+        )
+
+    cmd = run_mock.call_args[0][0]
+    assert "-shortest" not in cmd
+    vf = cmd[cmd.index("-vf") + 1]
+    assert "tpad=stop_mode=clone" in vf
+    assert "stop_duration=2.000000" in vf
+    assert "-af" not in cmd
+
+
+def test_merge_segment_extends_shorter_audio_with_apad(tmp_path: Path) -> None:
+    composer = VideoComposer(crossfade_duration=0.0)
+    video = tmp_path / "v.mp4"
+    audio = tmp_path / "a.wav"
+    out = tmp_path / "o.mp4"
+    video.write_bytes(b"x")
+    audio.write_bytes(b"y")
+
+    def _durations(p: Path) -> float:
+        return 11.0 if p.name == "v.mp4" else 8.0
+
+    with (
+        patch(
+            "manim_video_gen.video.composer.ffprobe_duration_seconds", side_effect=_durations
+        ),
+        patch.object(VideoComposer, "_run") as run_mock,
+    ):
+        composer.merge_segment(
+            video_path=video, audio_path=audio, output_path=out
+        )
+
+    cmd = run_mock.call_args[0][0]
+    assert "-shortest" not in cmd
+    assert "-af" in cmd
+    apad = cmd[cmd.index("-af") + 1]
+    assert "apad=pad_dur" in apad
+    assert "3.000000" in apad
 
 
 def test_generate_silence_audio_builds_ffmpeg_command(tmp_path: Path):

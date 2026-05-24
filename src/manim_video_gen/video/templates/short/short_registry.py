@@ -7,11 +7,13 @@ from typing import Callable
 from manim_video_gen.models.script import Segment
 from manim_video_gen.video.templates.short.beat_templates import BEAT_RENDERERS
 from manim_video_gen.video.templates.short.concept_templates import CONCEPT_RENDERERS
+from manim_video_gen.video.templates.short.domain_templates import DOMAIN_RENDERERS
 
 
 _DEFAULT_RENDERERS: dict[str, Callable[[Segment, float], str]] = {}
 _DEFAULT_RENDERERS.update(BEAT_RENDERERS)
 _DEFAULT_RENDERERS.update(CONCEPT_RENDERERS)
+_DEFAULT_RENDERERS.update(DOMAIN_RENDERERS)
 
 
 class ShortTemplateRegistry:

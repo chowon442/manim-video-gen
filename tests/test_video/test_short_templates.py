@@ -158,3 +158,92 @@ class TestConceptTemplates:
         seg = _make_segment(visual_type=visual_type)
         code = registry.render_code_for_segment(seg, duration=3.0)
         ast.parse(code)
+
+
+class TestDomainTemplates:
+    @pytest.mark.parametrize(
+        "visual_type",
+        ["short_domain_icon", "short_stat_chart", "short_flow_arrow"],
+    )
+    def test_domain_template_registered(self, visual_type):
+        registry = ShortTemplateRegistry()
+        assert registry.has(visual_type) is True
+
+    def test_short_stat_chart_generates_valid_python(self):
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(
+            visual_type="short_stat_chart",
+            visual_params={"values": [10, 20, 30], "labels": ["A", "B", "C"]},
+        )
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        assert "from manim import *" in code
+        assert "class Segment(Scene):" in code
+
+    @pytest.mark.parametrize(
+        "visual_type",
+        ["short_domain_icon", "short_stat_chart", "short_flow_arrow"],
+    )
+    def test_domain_template_syntax_valid(self, visual_type):
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(visual_type=visual_type)
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        ast.parse(code)
+
+
+class TestAllTemplatesRegistered:
+    """Verify all 14 templates are registered."""
+
+    ALL_TYPES = [
+        # Beat (5)
+        "short_hook", "short_before", "short_after", "short_payoff_card", "short_cta",
+        # Concept (6)
+        "short_concept_equation", "short_concept_graph", "short_concept_number_line",
+        "short_concept_annotated", "short_concept_compare", "short_concept_pattern",
+        # Domain (3)
+        "short_domain_icon", "short_stat_chart", "short_flow_arrow",
+    ]
+
+    def test_all_templates_registered(self):
+        registry = ShortTemplateRegistry()
+        for vt in self.ALL_TYPES:
+            assert registry.has(vt) is True, f"Missing template: {vt}"
+
+    def test_total_count(self):
+        registry = ShortTemplateRegistry()
+        registered = sum(1 for vt in self.ALL_TYPES if registry.has(vt))
+        assert registered == 14
+
+    def test_unknown_type_returns_false(self):
+        registry = ShortTemplateRegistry()
+        assert registry.has("unknown_type_xyz") is False
+
+    @pytest.mark.parametrize("visual_type", ALL_TYPES)
+    def test_template_generates_valid_python(self, visual_type):
+        """All templates should generate syntactically valid Python."""
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(visual_type=visual_type)
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        assert "from manim import *" in code
+        assert "class Segment(Scene):" in code
+        assert "def construct(self):" in code
+        ast.parse(code)
+
+
+class TestSafeZoneCompliance:
+    """Verify all templates respect 9:16 safe zone."""
+
+    ALL_TYPES = [
+        "short_hook", "short_before", "short_after", "short_payoff_card", "short_cta",
+        "short_concept_equation", "short_concept_graph", "short_concept_number_line",
+        "short_concept_annotated", "short_concept_compare", "short_concept_pattern",
+        "short_domain_icon", "short_stat_chart", "short_flow_arrow",
+    ]
+
+    @pytest.mark.parametrize("visual_type", ALL_TYPES)
+    def test_template_sets_9_16_frame(self, visual_type):
+        """All templates should set 9:16 frame dimensions."""
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(visual_type=visual_type)
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        # Should set frame dimensions for 9:16
+        assert "19.2" in code or "10.8" in code

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from manim_video_gen.models.script import Segment
 
@@ -40,7 +40,8 @@ class ShortTemplateRegistry:
 
     def render_code_for_segment(self, segment: Segment, duration: float) -> str:
         vt = segment.visual_type
-        renderer = self._renderers.get(vt)
-        if renderer is None:
-            raise KeyError(f"Unsupported short visual_type: {vt}")
+        try:
+            renderer = self._renderers[vt]
+        except KeyError as exc:
+            raise KeyError(f"Unsupported short visual_type: {vt}") from exc
         return renderer(segment, duration)

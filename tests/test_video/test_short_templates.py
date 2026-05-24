@@ -1,5 +1,7 @@
 """ShortTemplateRegistry has/get interface tests."""
 
+import ast
+
 import pytest
 
 from manim_video_gen.models.script import Segment
@@ -139,3 +141,20 @@ class TestConceptTemplates:
         assert "class Segment(Scene):" in code
         assert "A" in code
         assert "B" in code
+
+    @pytest.mark.parametrize(
+        "visual_type",
+        [
+            "short_concept_equation",
+            "short_concept_graph",
+            "short_concept_number_line",
+            "short_concept_annotated",
+            "short_concept_compare",
+            "short_concept_pattern",
+        ],
+    )
+    def test_concept_template_syntax_valid(self, visual_type):
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(visual_type=visual_type)
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        ast.parse(code)

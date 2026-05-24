@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from manim_video_gen.models.script import Segment
+
+_VALID_COLORS = frozenset({
+    "WHITE", "BLACK", "GRAY", "LIGHT_GRAY", "DARK_GRAY",
+    "RED", "GREEN", "BLUE", "YELLOW", "ORANGE", "PURPLE",
+    "TEAL", "PINK", "GOLD", "MAROON",
+})
+
+
+def _safe_color(name: str, default: str = "WHITE") -> str:
+    u = str(name).strip().upper()
+    return u if u in _VALID_COLORS else default
 
 FRAME_HEIGHT = 19.20
 FRAME_WIDTH = 10.80
@@ -14,7 +23,7 @@ def _render_short_concept_equation(segment: Segment, duration: float) -> str:
     """Display a centered equation."""
     latex = repr(str(segment.visual_params.get("latex", "")))
     font_size = int(segment.visual_params.get("font_size", 48))
-    color = str(segment.visual_params.get("color", "WHITE"))
+    color = _safe_color(segment.visual_params.get("color", "WHITE"))
 
     t_write = min(duration * 0.6, 2.0)
     t_wait = max(duration - t_write, 0.5)
@@ -35,10 +44,12 @@ class Segment(Scene):
 
 def _render_short_concept_graph(segment: Segment, duration: float) -> str:
     """Display a simple graph plot."""
-    func = repr(str(segment.visual_params.get("func", "lambda x: x")))
+    func = str(segment.visual_params.get("func", "lambda x: x"))
+    if not func.startswith("lambda"):
+        func = "lambda x: x"
     x_min = float(segment.visual_params.get("x_min", -3))
     x_max = float(segment.visual_params.get("x_max", 3))
-    color = str(segment.visual_params.get("color", "BLUE"))
+    color = _safe_color(segment.visual_params.get("color", "BLUE"))
 
     t_draw = min(duration * 0.6, 2.0)
     t_wait = max(duration - t_draw, 0.5)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from manim_video_gen.llm.prompts.short_scriptify import _ensure_tts_text
 from manim_video_gen.models.short import (
     ApplicationStory,
     ShortSeriesPlan,
@@ -18,6 +19,7 @@ from manim_video_gen.pipeline.short_orchestrator import (
     short_quality,
     topological_sort_units,
 )
+from manim_video_gen.utils.math_notation import polish_tts_text
 
 
 def _make_story(**overrides) -> ApplicationStory:
@@ -217,3 +219,41 @@ class TestPlanJson:
         assert len(loaded.units) == 1
         assert loaded.units[0].concept_name == "gradient"
         assert loaded.recommended_order == ["unit-001"]
+
+
+class TestShortPolishTtsText:
+    """Tests that polish_tts_text and _ensure_tts_text work for short pipeline."""
+
+    def test_polish_converts_math_symbols(self):
+        src = "x² + 6x + 9 = 0"
+        out = polish_tts_text(src)
+        assert "엑스" in out
+        assert "제곱" in out
+        assert "더하기" in out
+
+    def test_polish_strips_spoken_parenthesis(self):
+        src = "괄호 열기 엑스 괄호 닫기 제곱"
+        out = polish_tts_text(src)
+        assert "괄호" not in out
+
+    def test_ensure_tts_text_converts_lecture_patterns(self):
+        assert _ensure_tts_text("배워보겠습니다") == "알아볼게요"
+        assert _ensure_tts_text("학습하겠습니다") == "배울게요"
+        assert _ensure_tts_text("풀어보겠습니다") == "풀어볼게요"
+        assert _ensure_tts_text("설명드리겠습니다") == "설명할게요"
+
+    def test_ensure_tts_text_preserves_conversational(self):
+        src = "이 함수의 기울기를 알아볼게요"
+        assert _ensure_tts_text(src) == src
+
+    def test_ensure_tts_text_applied_to_empty_tts_text(self):
+        """When LLM omits tts_text, narration should be converted."""
+        narration = "이차방정식의 근의 공식을 배워보겠습니다"
+        result = _ensure_tts_text(narration)
+        assert result == "이차방정식의 근의 공식을 알아볼게요"
+
+    def test_ensure_tts_text_applied_to_existing_tts_text(self):
+        """When LLM provides tts_text with lecture patterns, convert it."""
+        tts_text = "이 함수를 설명드리겠습니다"
+        result = _ensure_tts_text(tts_text)
+        assert result == "이 함수를 설명할게요"

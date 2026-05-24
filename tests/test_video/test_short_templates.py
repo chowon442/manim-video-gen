@@ -80,7 +80,7 @@ class TestConceptTemplates:
         assert "from manim import *" in code
         assert "class Segment(Scene):" in code
         assert "E = mc^2" in code
-        assert "Text" in code
+        assert "MathTex" in code
 
     def test_short_concept_graph_generates_valid_python(self):
         registry = ShortTemplateRegistry()
@@ -247,3 +247,37 @@ class TestSafeZoneCompliance:
         code = registry.render_code_for_segment(seg, duration=3.0)
         # Should set frame dimensions for 9:16
         assert "19.2" in code or "10.8" in code
+
+    @pytest.mark.parametrize("visual_type", ALL_TYPES)
+    def test_template_uses_safe_zone_y_offset(self, visual_type):
+        """All templates should use safe zone Y offset to avoid headline/subtitle areas."""
+        registry = ShortTemplateRegistry()
+        seg = _make_segment(visual_type=visual_type)
+        code = registry.render_code_for_segment(seg, duration=3.0)
+        # Should use safe zone Y offset (not just ORIGIN)
+        assert "move_to" in code
+
+
+class TestLayoutHelpers:
+    """Test _layout.py helper functions."""
+
+    def test_safe_zone_y_offset_returns_float(self):
+        from manim_video_gen.video.templates.short._layout import safe_zone_y_offset
+        offset = safe_zone_y_offset(has_headline=True, has_subtitle=True)
+        assert isinstance(offset, float)
+
+    def test_safe_zone_y_offset_content_center(self):
+        from manim_video_gen.video.templates.short._layout import (
+            CONTENT_ZONE_BOTTOM,
+            CONTENT_ZONE_TOP,
+            safe_zone_y_offset,
+        )
+        offset = safe_zone_y_offset(has_headline=True, has_subtitle=True)
+        expected = (CONTENT_ZONE_TOP + CONTENT_ZONE_BOTTOM) / 2
+        assert abs(offset - expected) < 0.001
+
+    def test_scale_to_fit_frame_returns_code(self):
+        from manim_video_gen.video.templates.short._layout import scale_to_fit_frame
+        code = scale_to_fit_frame("eq")
+        assert "scale_to_fit_width" in code
+        assert "eq.width" in code

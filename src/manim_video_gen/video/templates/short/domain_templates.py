@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from manim_video_gen.models.script import Segment
-
-FRAME_HEIGHT = 19.20
-FRAME_WIDTH = 10.80
+from manim_video_gen.video.templates.short._layout import (
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+    safe_zone_y_offset,
+    scale_to_fit_frame,
+)
 
 _VALID_COLORS = frozenset({
     "WHITE", "BLACK", "GRAY", "LIGHT_GRAY", "DARK_GRAY",
@@ -28,6 +31,8 @@ def _render_short_domain_icon(segment: Segment, duration: float) -> str:
     t_draw = min(duration * 0.6, 1.5)
     t_wait = max(duration - t_draw, 0.5)
     
+    y_offset = safe_zone_y_offset(has_headline=True, has_subtitle=True)
+    
     shape_code = {
         "circle": "Circle(radius=1, color=BLUE)",
         "square": "Square(side_length=2, color=GREEN)",
@@ -43,6 +48,9 @@ class Segment(Scene):
         
         icon = {shape_code}
         lbl = Text({label}, font_size=36).next_to(icon, DOWN)
+        
+        group = VGroup(icon, lbl)
+        group.move_to([0, {y_offset:.3f}, 0])
         
         self.play(Create(icon), run_time={t_draw:.3f})
         self.play(Write(lbl), run_time=0.5)
@@ -62,6 +70,8 @@ def _render_short_stat_chart(segment: Segment, duration: float) -> str:
     
     t_draw = min(duration * 0.6, 2.0)
     t_wait = max(duration - t_draw, 0.5)
+    
+    y_offset = safe_zone_y_offset(has_headline=True, has_subtitle=True)
     
     values_str = ", ".join(str(v) for v in values[:6])
     labels_str = ", ".join(repr(str(l)) for l in labels[:6])
@@ -90,7 +100,7 @@ class Segment(Scene):
             bar.move_to(LEFT * 2 + RIGHT * i * 1.2 + UP * val / max_val * 2)
             bars.add(bar)
         
-        bars.move_to(ORIGIN)
+        bars.move_to([0, {y_offset:.3f}, 0])
         
         self.play(Create(bars), run_time={t_draw:.3f})
         self.wait({t_wait:.3f})
@@ -106,6 +116,8 @@ def _render_short_flow_arrow(segment: Segment, duration: float) -> str:
     
     t_draw = min(duration * 0.6, 2.0)
     t_wait = max(duration - t_draw, 0.5)
+    
+    y_offset = safe_zone_y_offset(has_headline=True, has_subtitle=True)
     
     steps_str = ", ".join(repr(str(s)) for s in steps[:4])
     
@@ -138,7 +150,7 @@ class Segment(Scene):
                 arrows.add(arrow)
         
         flow = VGroup(boxes, arrows).arrange(RIGHT, buff=0.5)
-        flow.move_to(ORIGIN)
+        flow.move_to([0, {y_offset:.3f}, 0])
         
         self.play(Create(flow), run_time={t_draw:.3f})
         self.wait({t_wait:.3f})

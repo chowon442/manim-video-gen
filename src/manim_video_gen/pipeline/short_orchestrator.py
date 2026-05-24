@@ -46,6 +46,7 @@ from manim_video_gen.pipeline.short_extractor import (
     load_canonical_db,
 )
 from manim_video_gen.tts.factory import get_tts_provider
+from manim_video_gen.video.audio_speed import speed_up_audio
 from manim_video_gen.utils.file_manager import SessionWorkspace
 from manim_video_gen.utils.math_notation import polish_tts_text
 from manim_video_gen.video.code_validator import (
@@ -466,11 +467,25 @@ async def generate_short_video(
             # TTS
             _emit_progress(on_progress, {"stage": "tts", "message": "TTS 생성 중"})
             tts_results: list[TTSResult] = []
+            playback_rate = settings.tts_playback_rate
             for seg in script.segments:
                 audio_path = workspace.root / f"seg_{seg.id:02d}.wav"
-                tts_result = await tts.synthesize(
-                    seg.effective_tts_text, output_path=audio_path
-                )
+                text = polish_tts_text(seg.effective_tts_text)
+                tts_result = await tts.synthesize(text, output_path=audio_path)
+
+                if abs(playback_rate - 1.0) > 1e-9:
+                    fast_path = audio_path.with_suffix(".fast.wav")
+                    sped = await asyncio.to_thread(
+                        speed_up_audio,
+                        Path(tts_result.audio_path),
+                        playback_rate,
+                        fast_path,
+                    )
+                    tts_result = tts_result.model_copy(update={
+                        "audio_path": sped.audio_path,
+                        "duration_seconds": sped.duration_seconds,
+                    })
+
                 tts_results.append(tts_result)
 
             # Render each segment

@@ -267,6 +267,19 @@ class Settings(BaseSettings):
         validation_alias="MANIM_VIDEO_GEN_XAI_TTS_LANGUAGE",
     )
 
+    tts_playback_rate: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=4.0,
+        validation_alias="MANIM_VIDEO_GEN_TTS_PLAYBACK_RATE",
+        description=(
+            "Playback rate for TTS audio in short-form pipeline. "
+            "1.0 = normal speed, 1.25 = 25%% faster. "
+            "Uses ffmpeg atempo filter (chained for rates outside 0.5-2.0). "
+            "Long-form pipeline is unaffected (always 1.0)."
+        ),
+    )
+
     burn_subtitles: bool = Field(
         default=True,
         validation_alias="MANIM_VIDEO_GEN_BURN_SUBTITLES",

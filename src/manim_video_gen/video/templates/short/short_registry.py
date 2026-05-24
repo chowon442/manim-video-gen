@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from manim_video_gen.models.script import Segment
+from manim_video_gen.video.templates.short.beat_templates import BEAT_RENDERERS
 
 
 def _render_short_concept_equation(segment: Segment, duration: float) -> str:
@@ -15,6 +16,7 @@ def _render_short_concept_equation(segment: Segment, duration: float) -> str:
 _DEFAULT_RENDERERS: dict[str, Callable[[Segment, float], str]] = {
     "short_concept_equation": _render_short_concept_equation,
 }
+_DEFAULT_RENDERERS.update(BEAT_RENDERERS)
 
 
 class ShortTemplateRegistry:

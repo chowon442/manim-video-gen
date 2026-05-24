@@ -423,6 +423,14 @@ async def generate_short_video(
     Returns (final_mp4_path, workspace).
     """
     settings = settings or get_settings()
+    # Force 9:16 resolution for short-form videos
+    if settings.video_width == 0 and settings.video_height == 0:
+        short_profile = VideoFormatProfile.SHORT_9_16
+        settings = settings.model_copy(update={
+            "video_width": short_profile.width,
+            "video_height": short_profile.height,
+            "format_profile": short_profile,
+        })
     t0 = time.perf_counter()
     own_workspace = workspace is None
     workspace = workspace or SessionWorkspace()
@@ -599,7 +607,7 @@ async def generate_short_series(
         units = units[:max_shorts]
 
     run_id = uuid.uuid4().hex[:8]
-    series_dir = Path(settings.artifact_dir or "artifacts") / f"series_{run_id}"
+    series_dir = project_root() / "artifacts" / f"series_{run_id}"
     series_dir.mkdir(parents=True, exist_ok=True)
 
     final_paths: list[Path] = []

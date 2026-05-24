@@ -80,7 +80,7 @@ class TestConceptTemplates:
         assert "from manim import *" in code
         assert "class Segment(Scene):" in code
         assert "E = mc^2" in code
-        assert "MathTex" in code
+        assert "Text" in code
 
     def test_short_concept_graph_generates_valid_python(self):
         registry = ShortTemplateRegistry()

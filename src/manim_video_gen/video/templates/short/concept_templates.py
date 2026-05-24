@@ -20,13 +20,18 @@ FRAME_WIDTH = 10.80
 
 
 def _render_short_concept_equation(segment: Segment, duration: float) -> str:
-    """Display a centered equation."""
-    latex = repr(str(segment.visual_params.get("latex", "")))
+    """Display a centered equation (fallback: Text if no latex param)."""
+    latex = str(segment.visual_params.get("latex", ""))
+    if not latex:
+        latex = str(segment.visual_params.get("text", "수식"))
     font_size = int(segment.visual_params.get("font_size", 48))
     color = _safe_color(segment.visual_params.get("color", "WHITE"))
 
     t_write = min(duration * 0.6, 2.0)
     t_wait = max(duration - t_write, 0.5)
+
+    # Use Text for better compatibility (no LaTeX dependency)
+    text_repr = repr(latex)
 
     return f"""from manim import *
 
@@ -35,7 +40,7 @@ class Segment(Scene):
         self.camera.frame_width = {FRAME_WIDTH}
         self.camera.frame_height = {FRAME_HEIGHT}
 
-        eq = MathTex({latex}, font_size={font_size}).set_color({color})
+        eq = Text({text_repr}, font_size={font_size}).set_color({color})
         eq.move_to(ORIGIN)
         self.play(Write(eq), run_time={t_write:.3f})
         self.wait({t_wait:.3f})
@@ -108,13 +113,16 @@ class Segment(Scene):
 
 
 def _render_short_concept_annotated(segment: Segment, duration: float) -> str:
-    """Display equation with annotations."""
-    latex = repr(str(segment.visual_params.get("latex", "")))
-    annotation = repr(str(segment.visual_params.get("annotation", "")))
+    """Display text with annotations (fallback-safe, no LaTeX)."""
+    text = str(segment.visual_params.get("text", segment.visual_params.get("latex", "")))
+    annotation = str(segment.visual_params.get("annotation", ""))
 
     t_write = min(duration * 0.5, 1.5)
     t_ann = min(duration * 0.3, 1.0)
     t_wait = max(duration - t_write - t_ann, 0.5)
+
+    text_repr = repr(text)
+    ann_repr = repr(annotation)
 
     return f"""from manim import *
 
@@ -123,14 +131,14 @@ class Segment(Scene):
         self.camera.frame_width = {FRAME_WIDTH}
         self.camera.frame_height = {FRAME_HEIGHT}
 
-        eq = MathTex({latex}, font_size=48)
+        eq = Text({text_repr}, font_size=48)
         eq.move_to(ORIGIN)
 
         self.play(Write(eq), run_time={t_write:.3f})
 
-        if {annotation}:
+        if {ann_repr}:
             brace = Brace(eq, DOWN)
-            txt = brace.get_text({annotation})
+            txt = brace.get_text({ann_repr})
             self.play(Create(brace), Write(txt), run_time={t_ann:.3f})
 
         self.wait({t_wait:.3f})

@@ -5,12 +5,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libcairo2 \
+    libcairo2-dev \
     libpango-1.0-0 \
+    libpango1.0-dev \
     libpangocairo-1.0-0 \
+    libpangocairo-1.0-dev \
+    pkg-config \
     fonts-noto-cjk \
     texlive-latex-extra \
     texlive-fonts-recommended \
     dvipng \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

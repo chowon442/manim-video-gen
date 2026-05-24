@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from manim_video_gen.config import VideoFormatProfile
 from manim_video_gen.video.subtitle import (
     _ass_escape,
     _normalize_subtitle_narration,
@@ -160,3 +161,40 @@ def test_subtitle_style_options_applied(tmp_path: Path):
 def test_generate_chain_ass_length_mismatch():
     with pytest.raises(ValueError, match="length mismatch"):
         generate_chain_ass_subtitle(["a"], [1.0, 2.0], Path("/tmp/x.ass"))
+
+
+def test_generate_ass_default_playres_is_1920x1080(tmp_path: Path):
+    out = tmp_path / "default.ass"
+    generate_ass_subtitle("테스트", 2.0, out)
+    text = out.read_text(encoding="utf-8")
+    assert "PlayResX: 1920" in text
+    assert "PlayResY: 1080" in text
+
+
+def test_generate_ass_short_9_16_playres_is_1080x1920(tmp_path: Path):
+    out = tmp_path / "short.ass"
+    generate_ass_subtitle("테스트", 2.0, out, format_profile=VideoFormatProfile.SHORT_9_16)
+    text = out.read_text(encoding="utf-8")
+    assert "PlayResX: 1080" in text
+    assert "PlayResY: 1920" in text
+
+
+def test_generate_ass_landscape_playres_unchanged(tmp_path: Path):
+    out = tmp_path / "landscape.ass"
+    generate_ass_subtitle("테스트", 2.0, out, format_profile=VideoFormatProfile.LANDSCAPE)
+    text = out.read_text(encoding="utf-8")
+    assert "PlayResX: 1920" in text
+    assert "PlayResY: 1080" in text
+
+
+def test_generate_chain_ass_short_9_16_playres(tmp_path: Path):
+    out = tmp_path / "chain_short.ass"
+    generate_chain_ass_subtitle(
+        ["첫 줄", "둘째"],
+        [2.0, 1.5],
+        out,
+        format_profile=VideoFormatProfile.SHORT_9_16,
+    )
+    text = out.read_text(encoding="utf-8")
+    assert "PlayResX: 1080" in text
+    assert "PlayResY: 1920" in text

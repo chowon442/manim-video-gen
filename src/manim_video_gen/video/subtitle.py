@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from manim_video_gen.config import VideoFormatProfile
+
 
 _SUBSCRIPT_BRACE_RE = re.compile(r"_\{([^{}]+)\}")
 _SUPERSCRIPT_BRACE_RE = re.compile(r"\^\{([^{}]+)\}")
@@ -257,6 +259,8 @@ def _build_ass_header(
     margin_l: int,
     margin_r: int,
     margin_v: int,
+    play_res_x: int = 1920,
+    play_res_y: int = 1080,
 ) -> str:
     return f"""[Script Info]
 Title: manim-video-gen
@@ -264,8 +268,8 @@ ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 YCbCr Matrix: TV.709
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -288,11 +292,14 @@ def generate_ass_subtitle(
     margin_l: int = 56,
     margin_r: int = 56,
     margin_v: int = 44,
+    format_profile: VideoFormatProfile | None = None,
 ) -> Path:
     """
     Write an ASS file with one Dialogue covering [0, duration_seconds].
 
     Bottom-center alignment is set in the Default style (Alignment=2).
+    When *format_profile* is provided, PlayRes is set to the profile's
+    resolution (e.g. 1080×1920 for short_9_16).
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -306,6 +313,11 @@ def generate_ass_subtitle(
         else _wrap_narration_lines(escaped, max_chars=max_chars)
     )
 
+    play_res_x, play_res_y = 1920, 1080
+    if format_profile is not None:
+        play_res_x = format_profile.width
+        play_res_y = format_profile.height
+
     dialogue = f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{text}\n"
 
     output_path.write_text(
@@ -314,6 +326,8 @@ def generate_ass_subtitle(
             margin_l=margin_l,
             margin_r=margin_r,
             margin_v=margin_v,
+            play_res_x=play_res_x,
+            play_res_y=play_res_y,
         )
         + dialogue,
         encoding="utf-8",
@@ -333,11 +347,14 @@ def generate_chain_ass_subtitle(
     margin_l: int = 56,
     margin_r: int = 56,
     margin_v: int = 44,
+    format_profile: VideoFormatProfile | None = None,
 ) -> Path:
     """
     Write an ASS file with one Dialogue per segment, timed with cumulative offsets.
 
     narrations[i] displays during [sum(durations[:i]), sum(durations[:i+1])).
+    When *format_profile* is provided, PlayRes is set to the profile's
+    resolution (e.g. 1080×1920 for short_9_16).
     """
     if len(narrations) != len(durations):
         raise ValueError("narrations and durations length mismatch")
@@ -358,12 +375,19 @@ def generate_chain_ass_subtitle(
         lines.append(f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{text}\n")
         offset += float(dur)
 
+    play_res_x, play_res_y = 1920, 1080
+    if format_profile is not None:
+        play_res_x = format_profile.width
+        play_res_y = format_profile.height
+
     output_path.write_text(
         _build_ass_header(
             font_size=font_size,
             margin_l=margin_l,
             margin_r=margin_r,
             margin_v=margin_v,
+            play_res_x=play_res_x,
+            play_res_y=play_res_y,
         )
         + "".join(lines),
         encoding="utf-8",

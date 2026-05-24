@@ -2,11 +2,51 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class VideoFormatProfile(Enum):
+    """Video resolution and layout presets."""
+
+    LANDSCAPE = "landscape"
+    SHORT_9_16 = "short_9_16"
+
+    @property
+    def width(self) -> int:
+        return _FORMAT_SPECS[self]["width"]
+
+    @property
+    def height(self) -> int:
+        return _FORMAT_SPECS[self]["height"]
+
+    @property
+    def safe_zone_top_pct(self) -> float:
+        return _FORMAT_SPECS[self]["safe_zone_top_pct"]
+
+    @property
+    def safe_zone_bottom_pct(self) -> float:
+        return _FORMAT_SPECS[self]["safe_zone_bottom_pct"]
+
+
+_FORMAT_SPECS: dict[VideoFormatProfile, dict[str, float]] = {
+    VideoFormatProfile.LANDSCAPE: {
+        "width": 1920,
+        "height": 1080,
+        "safe_zone_top_pct": 0.0,
+        "safe_zone_bottom_pct": 0.0,
+    },
+    VideoFormatProfile.SHORT_9_16: {
+        "width": 1080,
+        "height": 1920,
+        "safe_zone_top_pct": 0.12,
+        "safe_zone_bottom_pct": 0.20,
+    },
+}
 
 # CWD와 무관하게 저장소 루트의 .env를 읽음 (예: scripts/에서 스크립트 실행 시에도 Voice ID 적용)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -337,6 +377,13 @@ class Settings(BaseSettings):
     video_fps: int = Field(
         default=0,
         validation_alias="MANIM_VIDEO_GEN_VIDEO_FPS",
+    )
+
+    format_profile: VideoFormatProfile = Field(
+        default=VideoFormatProfile.LANDSCAPE,
+        validation_alias="MANIM_VIDEO_GEN_FORMAT_PROFILE",
+        description="Video format profile (landscape or short_9_16). "
+        "Determines resolution and safe zones.",
     )
 
     bgm_path: str = Field(

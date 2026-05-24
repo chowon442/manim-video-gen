@@ -22,6 +22,10 @@ class Segment(BaseModel):
     """One narrated segment with visual instructions."""
 
     id: int = Field(..., ge=0)
+    beat: str | None = Field(
+        default=None,
+        description="Story beat: hook|problem|concept|application|payoff",
+    )
     narration: str = Field(
         ...,
         description="Readable Korean for subtitles; may include light math notation like x², 6x",

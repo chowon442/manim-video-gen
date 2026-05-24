@@ -96,20 +96,30 @@ Default visual_type based on story_format (you may override if content requires)
 - curiosity -> visual_scene
 - pattern -> graph_plot
 
-## Available visual_type catalog
+## Available visual_type catalog (short_* only)
 
-1) equation_write - one equation appears with Write animation
-2) equation_transform - equation A becomes equation B
-3) equation_steps - multiple equations stacked
-4) equation_derivation - continuous derivation board
-5) graph_plot - coordinate axes and function graph
-6) highlight_result - equation with surrounding rectangle
-7) title_card - title and optional subtitle
-8) intro_problem - problem statement (opening)
-9) outro_summary - short closing summary
-10) number_line_plot - horizontal NumberLine
-11) annotated_equation - MathTex with Brace labels
-12) visual_scene - custom Manim code generation
+### Beat templates (5)
+1) short_hook - Hook: question text + simple icon/silhouette
+2) short_before - Application Problem: before state
+3) short_after - Application Payoff: after result (sequential)
+4) short_payoff_card - Non-application Payoff: one-line conclusion + highlight
+5) short_cta - Optional: "Part 2" / series link
+
+### Concept templates (6)
+6) short_concept_equation - vertical center, 1-2 line equation large
+7) short_concept_graph - vertical axes, curve/point 1 focal
+8) short_concept_number_line - vertical number line, interval, point
+9) short_concept_annotated - equation + brace annotation 1
+10) short_concept_compare - misconception: wrong vs correct 2 lines
+11) short_concept_pattern - pattern format: 3 cases → arrow → concept
+
+### Domain templates (3)
+12) short_domain_icon - domain atmosphere (game/medical/finance silhouette)
+13) short_stat_chart - bar/distribution simple chart (p-value, α etc.)
+14) short_flow_arrow - procedure 2-3 step arrows (stakes, curiosity)
+
+### LLM-only (not in registry)
+15) short_visual_scene - custom 9:16 Manim code generation (use sparingly, max 1 per unit)
 
 ## Good vs Bad Examples
 
@@ -137,11 +147,36 @@ _LECTURE_PATTERNS: list[tuple[str, str]] = [
 
 # Default visual_type for each story_format
 STORY_FORMAT_VISUAL_MAP: dict[StoryFormat, str] = {
-    StoryFormat.APPLICATION: "graph_plot",
-    StoryFormat.MISCONCEPTION: "annotated_equation",
-    StoryFormat.STAKES: "equation_write",
-    StoryFormat.CURIOSITY: "visual_scene",
-    StoryFormat.PATTERN: "graph_plot",
+    StoryFormat.APPLICATION: "short_concept_graph",
+    StoryFormat.MISCONCEPTION: "short_concept_compare",
+    StoryFormat.STAKES: "short_concept_equation",
+    StoryFormat.CURIOSITY: "short_concept_graph",
+    StoryFormat.PATTERN: "short_concept_pattern",
+}
+
+# Beat → default visual_type mapping
+BEAT_VISUAL_MAP: dict[str, str] = {
+    "hook": "short_hook",
+    "problem": "short_before",
+    "concept": "short_concept_equation",
+    "application": "short_after",
+    "payoff": "short_payoff_card",
+}
+
+# Long-form → short_* visual_type mapping for normalize
+LONG_TO_SHORT_VISUAL_MAP: dict[str, str] = {
+    "equation_write": "short_concept_equation",
+    "equation_transform": "short_concept_equation",
+    "equation_steps": "short_concept_equation",
+    "equation_derivation": "short_concept_equation",
+    "graph_plot": "short_concept_graph",
+    "highlight_result": "short_concept_equation",
+    "title_card": "short_hook",
+    "intro_problem": "short_hook",
+    "outro_summary": "short_payoff_card",
+    "number_line_plot": "short_concept_number_line",
+    "annotated_equation": "short_concept_annotated",
+    "visual_scene": "short_visual_scene",
 }
 
 
@@ -184,13 +219,63 @@ def _ensure_tts_text(narration: str) -> str:
 
 def default_visual_type(story_format: StoryFormat) -> str:
     """Get default visual_type for a story_format."""
-    return STORY_FORMAT_VISUAL_MAP.get(story_format, "equation_write")
+    return STORY_FORMAT_VISUAL_MAP.get(story_format, "short_concept_equation")
+
+
+def normalize_visual_params(visual_type: str, params: dict) -> dict:
+    """Normalize visual_params keys for short_* types."""
+    if not params:
+        return params
+
+    normalized = dict(params)
+
+    # title → headline
+    if "title" in normalized and "headline" not in normalized:
+        normalized["headline"] = normalized.pop("title")
+
+    # equation → latex
+    if "equation" in normalized and "latex" not in normalized:
+        normalized["latex"] = normalized.pop("equation")
+
+    return normalized
+
+
+def normalize_short_visual_type(
+    visual_type: str,
+    beat: str | None = None,
+    story_format: StoryFormat | None = None,
+) -> str:
+    """Normalize visual_type to short_* format.
+
+    1. If already short_* → return as-is
+    2. If long-form type → map to short_*
+    3. If unknown → use beat mapping, then story_format fallback
+    """
+    # Already short_* type
+    if visual_type.startswith("short_"):
+        return visual_type
+
+    # Long-form → short mapping
+    if visual_type in LONG_TO_SHORT_VISUAL_MAP:
+        return LONG_TO_SHORT_VISUAL_MAP[visual_type]
+
+    # Fallback: use beat mapping
+    if beat and beat in BEAT_VISUAL_MAP:
+        return BEAT_VISUAL_MAP[beat]
+
+    # Fallback: use story_format
+    if story_format:
+        return default_visual_type(story_format)
+
+    # Ultimate fallback
+    return "short_concept_equation"
 
 
 def parse_short_scriptify_response(response: str) -> VideoScript:
     """Parse LLM response into VideoScript.
 
     Handles JSON extraction and validation.
+    Normalizes visual_type to short_* format.
     """
     # Strip markdown fences if present
     text = response.strip()
@@ -200,11 +285,22 @@ def parse_short_scriptify_response(response: str) -> VideoScript:
 
     data = json.loads(text)
 
-    # Apply _ensure_tts_text to all segments
+    # Apply _ensure_tts_text and normalize visual_type
     for seg in data.get("segments", []):
         if not seg.get("tts_text"):
             seg["tts_text"] = _ensure_tts_text(seg.get("narration", ""))
         else:
             seg["tts_text"] = _ensure_tts_text(seg["tts_text"])
+
+        # Normalize visual_type to short_*
+        beat = seg.get("beat")
+        vt = seg.get("visual_type", "")
+        seg["visual_type"] = normalize_short_visual_type(vt, beat)
+
+        # Normalize visual_params keys
+        if "visual_params" in seg:
+            seg["visual_params"] = normalize_visual_params(
+                seg["visual_type"], seg["visual_params"]
+            )
 
     return VideoScript(**data)

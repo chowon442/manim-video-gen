@@ -393,3 +393,170 @@ def generate_chain_ass_subtitle(
         encoding="utf-8",
     )
     return output_path
+
+
+# Headline style: top-center, positioned within top 12% safe zone.
+# For 1080×1920: top 12% = 230px. MarginV=180 places text baseline ~180px from top.
+_HEADLINE_FONT_SIZE = 48
+_HEADLINE_MARGIN_V = 180
+_HEADLINE_MARGIN_L = 40
+_HEADLINE_MARGIN_R = 40
+
+
+def _build_ass_header_with_headline(
+    *,
+    font_size: int,
+    margin_l: int,
+    margin_r: int,
+    margin_v: int,
+    play_res_x: int = 1920,
+    play_res_y: int = 1080,
+) -> str:
+    """ASS header with both Default (subtitle) and Headline styles."""
+    return f"""[Script Info]
+Title: manim-video-gen
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Noto Sans KR,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,2,{margin_l},{margin_r},{margin_v},1
+Style: Headline,Noto Sans KR,{_HEADLINE_FONT_SIZE},&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,8,{_HEADLINE_MARGIN_L},{_HEADLINE_MARGIN_R},{_HEADLINE_MARGIN_V},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
+def generate_ass_subtitle_with_headline(
+    narration: str,
+    duration_seconds: float,
+    output_path: Path,
+    *,
+    headline: str = "",
+    style_name: str = "Default",
+    max_chars: int = 56,
+    wrap_mode: str = "auto",
+    font_size: int = 42,
+    margin_l: int = 56,
+    margin_r: int = 56,
+    margin_v: int = 44,
+    format_profile: VideoFormatProfile | None = None,
+) -> Path:
+    """Write an ASS file with subtitle + optional headline overlay.
+
+    The headline uses the Headline style (top-center, bold, within the
+    top 12% safe zone) and spans the full duration.  It is visual-only
+    and must NOT be fed to TTS.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    start = _format_ass_time(0.0)
+    end = _format_ass_time(float(duration_seconds))
+    escaped = _ass_escape(narration)
+    text = (
+        escaped
+        if str(wrap_mode).lower() == "auto"
+        else _wrap_narration_lines(escaped, max_chars=max_chars)
+    )
+
+    play_res_x, play_res_y = 1920, 1080
+    if format_profile is not None:
+        play_res_x = format_profile.width
+        play_res_y = format_profile.height
+
+    lines = f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{text}\n"
+    if headline:
+        headline_escaped = _ass_escape(headline)
+        lines = (
+            f"Dialogue: 1,{start},{end},Headline,,0,0,0,,{headline_escaped}\n"
+            + lines
+        )
+
+    output_path.write_text(
+        _build_ass_header_with_headline(
+            font_size=font_size,
+            margin_l=margin_l,
+            margin_r=margin_r,
+            margin_v=margin_v,
+            play_res_x=play_res_x,
+            play_res_y=play_res_y,
+        )
+        + lines,
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def generate_chain_ass_subtitle_with_headline(
+    narrations: list[str],
+    durations: list[float],
+    output_path: Path,
+    *,
+    headline: str = "",
+    style_name: str = "Default",
+    max_chars: int = 56,
+    wrap_mode: str = "auto",
+    font_size: int = 42,
+    margin_l: int = 56,
+    margin_r: int = 56,
+    margin_v: int = 44,
+    format_profile: VideoFormatProfile | None = None,
+) -> Path:
+    """Write an ASS file with per-segment subtitles + optional headline overlay.
+
+    ``headline`` spans the entire video duration (sum of all *durations*).
+    It is visual-only and must NOT be fed to TTS.
+    """
+    if len(narrations) != len(durations):
+        raise ValueError("narrations and durations length mismatch")
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total_duration = sum(float(d) for d in durations)
+    offset = 0.0
+    lines: list[str] = []
+
+    if headline:
+        headline_escaped = _ass_escape(headline)
+        h_start = _format_ass_time(0.0)
+        h_end = _format_ass_time(total_duration)
+        lines.append(
+            f"Dialogue: 1,{h_start},{h_end},Headline,,0,0,0,,{headline_escaped}\n"
+        )
+
+    for narration, dur in zip(narrations, durations, strict=True):
+        start = _format_ass_time(offset)
+        end = _format_ass_time(offset + float(dur))
+        escaped = _ass_escape(narration)
+        text = (
+            escaped
+            if str(wrap_mode).lower() == "auto"
+            else _wrap_narration_lines(escaped, max_chars=max_chars)
+        )
+        lines.append(f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{text}\n")
+        offset += float(dur)
+
+    play_res_x, play_res_y = 1920, 1080
+    if format_profile is not None:
+        play_res_x = format_profile.width
+        play_res_y = format_profile.height
+
+    output_path.write_text(
+        _build_ass_header_with_headline(
+            font_size=font_size,
+            margin_l=margin_l,
+            margin_r=margin_r,
+            margin_v=margin_v,
+            play_res_x=play_res_x,
+            play_res_y=play_res_y,
+        )
+        + "".join(lines),
+        encoding="utf-8",
+    )
+    return output_path

@@ -395,12 +395,33 @@ def generate_chain_ass_subtitle(
     return output_path
 
 
-# Headline style: top-center, positioned within top 12% safe zone.
-# For 1080×1920: top 12% = 230px. MarginV=180 places text baseline ~180px from top.
-_HEADLINE_FONT_SIZE = 48
-_HEADLINE_MARGIN_V = 180
+# Headline style defaults (overridden per format_profile / env).
+_HEADLINE_FONT_SIZE_DEFAULT = 48  # long-form 16:9
+_HEADLINE_FONT_SIZE_SHORT = 68  # short 9:16 (~1.6x subtitle 42px)
+_HEADLINE_MARGIN_V_DEFAULT = 180
 _HEADLINE_MARGIN_L = 40
 _HEADLINE_MARGIN_R = 40
+
+
+def _resolve_headline_params(
+    *,
+    format_profile: "VideoFormatProfile | None" = None,
+    headline_font_size: int = 0,
+    headline_margin_v: int = 0,
+) -> tuple[int, int]:
+    """Return (font_size, margin_v) for headline ASS style.
+
+    Priority: explicit env value > format-profile default > global default.
+    """
+    from manim_video_gen.config import VideoFormatProfile  # local to avoid circular
+
+    is_short = format_profile is not None and format_profile.is_short
+    default_font = _HEADLINE_FONT_SIZE_SHORT if is_short else _HEADLINE_FONT_SIZE_DEFAULT
+    default_margin = int(format_profile.height * 0.08) if is_short else _HEADLINE_MARGIN_V_DEFAULT
+
+    font = headline_font_size if headline_font_size > 0 else default_font
+    margin = headline_margin_v if headline_margin_v > 0 else default_margin
+    return font, margin
 
 
 def _build_ass_header_with_headline(
@@ -411,8 +432,26 @@ def _build_ass_header_with_headline(
     margin_v: int,
     play_res_x: int = 1920,
     play_res_y: int = 1080,
+    headline_font_size: int = 0,
+    headline_margin_v: int = 0,
 ) -> str:
     """ASS header with both Default (subtitle) and Headline styles."""
+    from manim_video_gen.config import VideoFormatProfile  # local to avoid circular
+
+    # Detect short format from play_res aspect ratio
+    is_short = play_res_y > play_res_x
+    fmt = None
+    if is_short:
+        try:
+            fmt = VideoFormatProfile.SHORT_9_16
+        except Exception:
+            pass
+    h_font, h_margin = _resolve_headline_params(
+        format_profile=fmt,
+        headline_font_size=headline_font_size,
+        headline_margin_v=headline_margin_v,
+    )
+
     return f"""[Script Info]
 Title: manim-video-gen
 ScriptType: v4.00+
@@ -425,7 +464,7 @@ PlayResY: {play_res_y}
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Noto Sans KR,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,2,{margin_l},{margin_r},{margin_v},1
-Style: Headline,Noto Sans KR,{_HEADLINE_FONT_SIZE},&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,8,{_HEADLINE_MARGIN_L},{_HEADLINE_MARGIN_R},{_HEADLINE_MARGIN_V},1
+Style: Headline,Noto Sans KR,{h_font},&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,8,{_HEADLINE_MARGIN_L},{_HEADLINE_MARGIN_R},{h_margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -446,6 +485,8 @@ def generate_ass_subtitle_with_headline(
     margin_r: int = 56,
     margin_v: int = 44,
     format_profile: VideoFormatProfile | None = None,
+    headline_font_size: int = 0,
+    headline_margin_v: int = 0,
 ) -> Path:
     """Write an ASS file with subtitle + optional headline overlay.
 
@@ -486,6 +527,8 @@ def generate_ass_subtitle_with_headline(
             margin_v=margin_v,
             play_res_x=play_res_x,
             play_res_y=play_res_y,
+            headline_font_size=headline_font_size,
+            headline_margin_v=headline_margin_v,
         )
         + lines,
         encoding="utf-8",
@@ -507,6 +550,8 @@ def generate_chain_ass_subtitle_with_headline(
     margin_r: int = 56,
     margin_v: int = 44,
     format_profile: VideoFormatProfile | None = None,
+    headline_font_size: int = 0,
+    headline_margin_v: int = 0,
 ) -> Path:
     """Write an ASS file with per-segment subtitles + optional headline overlay.
 
@@ -555,6 +600,8 @@ def generate_chain_ass_subtitle_with_headline(
             margin_v=margin_v,
             play_res_x=play_res_x,
             play_res_y=play_res_y,
+            headline_font_size=headline_font_size,
+            headline_margin_v=headline_margin_v,
         )
         + "".join(lines),
         encoding="utf-8",

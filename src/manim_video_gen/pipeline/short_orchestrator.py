@@ -13,7 +13,7 @@ from graphlib import TopologicalSorter, CycleError
 from pathlib import Path
 from typing import Any
 
-from manim_video_gen.config import Settings, VideoFormatProfile, get_settings
+from manim_video_gen.config import Settings, VideoFormatProfile, get_settings, project_root
 from manim_video_gen.llm.client import OpenRouterClient
 from manim_video_gen.llm.prompts.extract_shorts import (
     EXTRACT_SHORTS_SYSTEM_PROMPT,
@@ -251,6 +251,50 @@ def topological_sort_units(units: list[ShortUnit]) -> list[ShortUnit]:
 # Short Manim code builder (Registry → LLM → fallback)
 # ---------------------------------------------------------------------------
 
+# Long-form → short-form visual_type mapping for normalize.
+_LONG_TO_SHORT_VT: dict[str, str] = {
+    "title_card": "short_hook",
+    "equation_write": "short_concept_equation",
+    "equation_transform": "short_concept_equation",
+    "graph_plot": "short_concept_graph",
+    "number_line": "short_concept_number_line",
+    "annotated_equation": "short_concept_annotated",
+    "compare": "short_concept_compare",
+    "pattern": "short_concept_pattern",
+    "icon_display": "short_domain_icon",
+    "bar_chart": "short_stat_chart",
+    "flow_diagram": "short_flow_arrow",
+}
+
+# Beat → default short-form visual_type.
+_BEAT_DEFAULT_VT: dict[str, str] = {
+    "hook": "short_hook",
+    "before": "short_before",
+    "after": "short_after",
+    "concept": "short_concept_equation",
+    "problem": "short_concept_equation",
+    "application": "short_concept_equation",
+    "payoff": "short_payoff_card",
+    "cta": "short_cta",
+}
+
+
+def _normalize_visual_type(vt: str, beat: str | None = None) -> str:
+    """Normalize visual_type to short-form registry key.
+
+    1. Already a short_* key → pass through
+    2. Long-form key → mapped via _LONG_TO_SHORT_VT
+    3. Beat-based fallback → _BEAT_DEFAULT_VT
+    4. Unknown → return as-is (will trigger LLM)
+    """
+    if vt.startswith("short_"):
+        return vt
+    if vt in _LONG_TO_SHORT_VT:
+        return _LONG_TO_SHORT_VT[vt]
+    if beat and beat in _BEAT_DEFAULT_VT:
+        return _BEAT_DEFAULT_VT[beat]
+    return vt
+
 
 async def _build_short_manim_code_for_segment(
     *,
@@ -261,18 +305,30 @@ async def _build_short_manim_code_for_segment(
     client: OpenRouterClient,
     settings: Settings,
 ) -> tuple[str, int]:
-    """Build short-form Manim code. Returns (code, llm_retries)."""
-    llm_retries = 0
+    """Build short-form Manim code. Returns (code, llm_retries).
 
-    if registry.has(seg.visual_type):
-        code = registry.render_code_for_segment(seg, duration)
+    Flow:
+    1. Normalize visual_type (long-form → short-form)
+    2. If registry has normalized vt → template (skip LLM)
+    3. If vt == "short_visual_scene" → LLM only (no template)
+    4. Else → beat/story_format-based nearest template via fallback
+    5. LLM 3 failures → resolve_short_fallback_template(beat, vt)
+    """
+    llm_retries = 0
+    vt = _normalize_visual_type(seg.visual_type, beat=seg.beat)
+
+    # 1) Registry hit → use template directly (skip LLM)
+    if registry.has(vt):
+        normalized_seg = seg.model_copy(update={"visual_type": vt})
+        code = registry.render_code_for_segment(normalized_seg, duration)
         code = normalize_llm_manim_tex_backslashes(code)
         code = inject_cjk_if_needed(code)
         code = adjust_duration_safe(code, duration)
         code = ensure_scene_cleanup(code)
         return code, 0
 
-    # LLM fallback
+    # 2) short_visual_scene → LLM only (template not available)
+    #    Other unknown types → also try LLM first
     errors: list[str] = []
     prior_codes: list[str] = []
     max_retries = 3
@@ -317,12 +373,12 @@ async def _build_short_manim_code_for_segment(
         errors.append(err[:2000])
         prior_codes.append(code)
 
-    # Final fallback: template
+    # Final fallback: template based on beat/visual_type
     logger.warning(
         "LLM short manim failed after retries; using fallback template for seg %d",
         seg.id,
     )
-    fallback_name = resolve_short_fallback_template(seg.visual_type)
+    fallback_name = resolve_short_fallback_template(seg.visual_type, beat=seg.beat)
     if registry.has(fallback_name):
         code = registry.render_code_for_segment(
             seg.model_copy(update={"visual_type": fallback_name}),
@@ -392,6 +448,8 @@ async def _render_short_segment(
             margin_r=settings.subtitle_margin_r,
             margin_v=settings.subtitle_margin_v,
             format_profile=VideoFormatProfile.SHORT_9_16,
+            headline_font_size=settings.headline_font_size,
+            headline_margin_v=settings.headline_margin_v,
         )
         subtitle_path = ass_path
 
@@ -401,7 +459,7 @@ async def _render_short_segment(
         audio_path=Path(tts_result.audio_path),
         output_path=merged,
         subtitle_path=subtitle_path,
-        subtitle_safe_area_px=0,
+        subtitle_safe_area_px=settings.subtitle_safe_area_px,
     )
     return merged, video_only, code, llm_retries
 

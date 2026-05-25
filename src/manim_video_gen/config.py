@@ -32,6 +32,11 @@ class VideoFormatProfile(Enum):
     def safe_zone_bottom_pct(self) -> float:
         return _FORMAT_SPECS[self]["safe_zone_bottom_pct"]
 
+    @property
+    def is_short(self) -> bool:
+        """True for 9:16 portrait (short-form) format."""
+        return self is VideoFormatProfile.SHORT_9_16
+
 
 _FORMAT_SPECS: dict[VideoFormatProfile, dict[str, float]] = {
     VideoFormatProfile.LANDSCAPE: {
@@ -316,6 +321,22 @@ class Settings(BaseSettings):
         description=(
             "Reserve bottom area for subtitles by shrinking video vertically and padding black bar. "
             "0 disables this behavior."
+        ),
+    )
+    headline_font_size: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="MANIM_VIDEO_GEN_HEADLINE_FONT_SIZE",
+        description=(
+            "Headline ASS font size. 0 = auto (68 for 9:16 shorts, 48 for 16:9 long-form)."
+        ),
+    )
+    headline_margin_v: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="MANIM_VIDEO_GEN_HEADLINE_MARGIN_V",
+        description=(
+            "Headline ASS MarginV (distance from top). 0 = auto (8% of frame height)."
         ),
     )
 

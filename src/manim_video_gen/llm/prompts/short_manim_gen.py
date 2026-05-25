@@ -203,19 +203,44 @@ def build_short_manim_user_prompt(
 
 
 # Beat-type -> fallback template mapping for degrade on LLM failure.
+# Maps both short-form keys (from registry) and long-form keys (from scriptify).
 _BEAT_FALLBACK_MAP: dict[str, str] = {
+    # short-form beat keys
     "hook": "short_hook",
     "before": "short_before",
     "after": "short_after",
     "payoff_card": "short_payoff_card",
     "cta": "short_cta",
+    # long-form keys → short-form fallback (scriptify may output these)
+    "title_card": "short_hook",
+    "equation_write": "short_concept_equation",
+    "equation_transform": "short_concept_equation",
+    "graph_plot": "short_concept_graph",
+    "number_line": "short_concept_number_line",
+    "annotated_equation": "short_concept_annotated",
+    "compare": "short_concept_compare",
+    "pattern": "short_concept_pattern",
+    "icon_display": "short_domain_icon",
+    "bar_chart": "short_stat_chart",
+    "flow_diagram": "short_flow_arrow",
+    # concept/beat types as-is
+    "concept": "short_concept_equation",
+    "problem": "short_concept_equation",
+    "application": "short_concept_equation",
+    "payoff": "short_payoff_card",
 }
 
 
-def resolve_short_fallback_template(visual_type: str) -> str:
+def resolve_short_fallback_template(visual_type: str, beat: str | None = None) -> str:
     """Return the fallback template name when LLM generation fails.
 
-    For beat types, maps to the corresponding beat template.
-    For concept/other types, defaults to ``short_concept_equation``.
+    Priority:
+    1. Direct visual_type match in mapping
+    2. beat-based match
+    3. Default to short_concept_equation
     """
-    return _BEAT_FALLBACK_MAP.get(visual_type, "short_concept_equation")
+    if visual_type in _BEAT_FALLBACK_MAP:
+        return _BEAT_FALLBACK_MAP[visual_type]
+    if beat and beat in _BEAT_FALLBACK_MAP:
+        return _BEAT_FALLBACK_MAP[beat]
+    return "short_concept_equation"

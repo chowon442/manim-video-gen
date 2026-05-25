@@ -122,6 +122,39 @@ class TestShortQuality:
         errors = short_quality(unit)
         assert not any("estimated_seconds" in e for e in errors)
 
+    def test_korean_payoff_with_particle_variant_passes(self):
+        """Korean payoff referencing app_result with different particles should pass."""
+        unit = _make_unit(
+            story=_make_story(
+                application_result="p-value가 0.014(1.4%)로 유의미합니다",
+                payoff_line="p-value 0.014로 유의미해요",
+            )
+        )
+        errors = short_quality(unit)
+        assert not any("payoff_line" in e for e in errors)
+
+    def test_korean_payoff_semantic_connection_passes(self):
+        """Korean payoff with same content words but different endings should pass."""
+        unit = _make_unit(
+            story=_make_story(
+                application_result="기울기로 추세를 판단할 수 있어요",
+                payoff_line="기울기로 추세를 읽는 거예요",
+            )
+        )
+        errors = short_quality(unit)
+        assert not any("payoff_line" in e for e in errors)
+
+    def test_korean_payoff_unrelated_fails(self):
+        """Korean payoff completely unrelated to app_result should fail."""
+        unit = _make_unit(
+            story=_make_story(
+                application_result="기울기로 추세를 판단할 수 있어요",
+                payoff_line="오늘 날씨가 좋네요",
+            )
+        )
+        errors = short_quality(unit)
+        assert any("payoff_line" in e for e in errors)
+
 
 class TestTopologicalSort:
     """Tests for topological_sort_units()."""

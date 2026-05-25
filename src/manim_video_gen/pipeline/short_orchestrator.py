@@ -48,6 +48,7 @@ from manim_video_gen.pipeline.short_extractor import (
 from manim_video_gen.tts.factory import get_tts_provider
 from manim_video_gen.video.audio_speed import speed_up_audio
 from manim_video_gen.utils.file_manager import SessionWorkspace
+from manim_video_gen.utils.korean_text import payoff_references_application
 from manim_video_gen.utils.math_notation import polish_tts_text
 from manim_video_gen.video.code_validator import (
     normalize_llm_manim_tex_backslashes,
@@ -103,10 +104,9 @@ def short_quality(unit: ShortUnit) -> list[str]:
 
     # Payoff must contain application_result reference
     if story.application_result and story.payoff_line:
-        app_words = set(story.application_result.lower().split())
-        payoff_words = set(story.payoff_line.lower().split())
-        overlap = app_words & payoff_words
-        if len(overlap) < 2:
+        if not payoff_references_application(
+            story.application_result, story.payoff_line
+        ):
             errors.append(
                 "payoff_line does not reference application_result (too disconnected)"
             )

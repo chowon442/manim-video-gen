@@ -5,16 +5,81 @@ from __future__ import annotations
 import re
 
 # Common English stopwords to exclude from token matching.
-_ENGLISH_STOPWORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
-    "on", "with", "at", "by", "from", "as", "into", "about", "between",
-    "through", "during", "before", "after", "above", "below", "and",
-    "but", "or", "nor", "not", "so", "if", "then", "than", "too",
-    "very", "just", "that", "this", "it", "its", "they", "them", "their",
-    "we", "our", "you", "your", "he", "him", "his", "she", "her",
-})
+_ENGLISH_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "about",
+        "between",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "not",
+        "so",
+        "if",
+        "then",
+        "than",
+        "too",
+        "very",
+        "just",
+        "that",
+        "this",
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+    }
+)
 # Order matters: longer particles first to avoid partial matches.
 _PARTICLES = (
     "으로",
@@ -46,9 +111,7 @@ _PARTICLE_RE = re.compile(
 
 # Matches numbers with optional decimal, percentage, parentheses, units.
 # e.g. "0.014(1.4%)" → "0.014", "100원" → "100"
-_NUM_WITH_EXTRAS = re.compile(
-    r"\d+(?:\.\d+)?(?:\s*[%]|\s*\([^)]*\))?"
-)
+_NUM_WITH_EXTRAS = re.compile(r"\d+(?:\.\d+)?(?:\s*[%]|\s*\([^)]*\))?")
 
 # Matches standalone alphanumeric tokens (English + digits).
 _ALNUM_TOKEN = re.compile(r"[a-zA-Z][a-zA-Z0-9._-]*|[0-9]+(?:\.[0-9]+)?")
@@ -140,17 +203,19 @@ def payoff_references_application(
         return True
 
     # Substring fallback: check if any app token appears as substring
-    # in the raw payoff text (handles cases where tokenization differs)
-    # Only check tokens with length >= 3 to avoid false positives
-    # from common short words like "is", "the", etc.
+    # in the raw payoff text (handles cases where tokenization differs).
+    # For Korean we allow length >= 2 (many core nouns are 2 chars);
+    # for ASCII we keep >= 3 to avoid false positives on stopwords.
     payoff_lower = payoff_line.lower()
     for tok in app_tokens:
-        if len(tok) >= 3 and tok in payoff_lower:
+        min_len = 2 if any(ord(c) > 127 for c in tok) else 3
+        if len(tok) >= min_len and tok in payoff_lower:
             return True
 
     app_lower = application_result.lower()
     for tok in payoff_tokens:
-        if len(tok) >= 3 and tok in app_lower:
+        min_len = 2 if any(ord(c) > 127 for c in tok) else 3
+        if len(tok) >= min_len and tok in app_lower:
             return True
 
     return False

@@ -26,6 +26,22 @@ def _safe_color(name: str, default: str = "WHITE") -> str:
     return u if u in _VALID_COLORS else default
 
 
+def _extract_latex_from_description(segment: Segment) -> str:
+    """Try to pull a LaTeX expression from visual_description if params are empty."""
+    desc = (segment.visual_description or "").strip()
+    if not desc:
+        return ""
+    # Look for patterns like $...$ or MathTex(...)
+    import re
+    math_match = re.search(r'\$([^$]+)\$', desc)
+    if math_match:
+        return math_match.group(1)
+    tex_match = re.search(r'MathTex\(["\'](.+?)["\']\)', desc)
+    if tex_match:
+        return tex_match.group(1)
+    return ""
+
+
 def _render_short_concept_equation(segment: Segment, duration: float) -> str:
     """Display a centered equation using MathTex.
 
@@ -34,7 +50,11 @@ def _render_short_concept_equation(segment: Segment, duration: float) -> str:
     """
     latex = str(segment.visual_params.get("latex", ""))
     if not latex:
-        latex = str(segment.visual_params.get("text", "수식"))
+        latex = str(segment.visual_params.get("text", ""))
+    if not latex:
+        latex = _extract_latex_from_description(segment)
+    if not latex:
+        latex = "수식"
     font_size = int(segment.visual_params.get("font_size", 48))
     color = _safe_color(segment.visual_params.get("color", "WHITE"))
 

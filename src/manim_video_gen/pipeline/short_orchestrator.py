@@ -296,6 +296,31 @@ def _normalize_visual_type(vt: str, beat: str | None = None) -> str:
     return vt
 
 
+# ---------------------------------------------------------------------------
+# Visual-description richness heuristics for LLM override
+# ---------------------------------------------------------------------------
+
+_RICH_VD_KEYWORDS: frozenset[str] = frozenset({
+    "axes", "graph", "plot", "circle", "arrow", "brace",
+    "dot", "line", "curve", "animate", "transform", "fade",
+    "matrix", "vector", "shape", "color", "move_to", "scale",
+    "number_line", "highlight", "glow", "pulse", "rotate",
+})
+
+
+def _visual_description_is_rich(seg: Segment) -> bool:
+    """Return True if visual_description is detailed enough for LLM generation.
+
+    This lets the pipeline prefer creative LLM output over rigid templates
+    when the script writer has given a rich visual description.
+    """
+    desc = (seg.visual_description or "").strip()
+    if len(desc) < 25:
+        return False
+    lower = desc.lower()
+    return any(kw in lower for kw in _RICH_VD_KEYWORDS)
+
+
 async def _build_short_manim_code_for_segment(
     *,
     seg: Segment,
@@ -309,16 +334,37 @@ async def _build_short_manim_code_for_segment(
 
     Flow:
     1. Normalize visual_type (long-form → short-form)
-    2. If registry has normalized vt → template (skip LLM)
-    3. If vt == "short_visual_scene" → LLM only (no template)
-    4. Else → beat/story_format-based nearest template via fallback
-    5. LLM 3 failures → resolve_short_fallback_template(beat, vt)
+    2. If vt == "short_visual_scene" → LLM only (no template)
+    3. If registry has normalized vt AND visual_description is rich
+       AND beat is concept/application/problem → LLM override for quality
+    4. If registry has normalized vt → template (skip LLM)
+    5. Else → LLM first, then fallback template
     """
     llm_retries = 0
     vt = _normalize_visual_type(seg.visual_type, beat=seg.beat)
 
-    # 1) Registry hit → use template directly (skip LLM)
-    if registry.has(vt):
+    # 1) short_visual_scene → LLM only (template not available)
+    if vt == "short_visual_scene":
+        pass  # fall through to LLM path below
+    # 2) Registry hit, but beat allows creative LLM when description is rich
+    elif registry.has(vt) and seg.beat in {"concept", "application", "problem"}:
+        if _visual_description_is_rich(seg):
+            logger.info(
+                "seg %d: registry has %s but visual_description is rich → using LLM",
+                seg.id, vt,
+            )
+            pass  # fall through to LLM path
+        else:
+            # Template path
+            normalized_seg = seg.model_copy(update={"visual_type": vt})
+            code = registry.render_code_for_segment(normalized_seg, duration)
+            code = normalize_llm_manim_tex_backslashes(code)
+            code = inject_cjk_if_needed(code)
+            code = adjust_duration_safe(code, duration)
+            code = ensure_scene_cleanup(code)
+            return code, 0
+    # 3) Registry hit for beats that are text-only (hook, payoff, cta, before, after)
+    elif registry.has(vt):
         normalized_seg = seg.model_copy(update={"visual_type": vt})
         code = registry.render_code_for_segment(normalized_seg, duration)
         code = normalize_llm_manim_tex_backslashes(code)
@@ -327,8 +373,7 @@ async def _build_short_manim_code_for_segment(
         code = ensure_scene_cleanup(code)
         return code, 0
 
-    # 2) short_visual_scene → LLM only (template not available)
-    #    Other unknown types → also try LLM first
+    # LLM path (either short_visual_scene or rich-description override)
     errors: list[str] = []
     prior_codes: list[str] = []
     max_retries = 3

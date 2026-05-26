@@ -50,6 +50,7 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
 - story.scenario must be a concrete, relatable situation
 - story.problem_in_domain must create tension
 - story.payoff_line must tie back to the hook
+- story.payoff_line must naturally include at least one key noun or result keyword from story.application_result (e.g. repeat words like 수치, 계수, 추정, 오차, 민감도, 도출) so the closing feels connected to the resolution
 - recommended_order uses unit ids; order by difficulty (easiest first)
 - If concepts have prerequisites, respect dependency order
 """

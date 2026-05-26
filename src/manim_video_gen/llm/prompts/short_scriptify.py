@@ -96,6 +96,72 @@ Default visual_type based on story_format (you may override if content requires)
 - curiosity -> visual_scene
 - pattern -> graph_plot
 
+## visual_description Guidelines (CRITICAL)
+
+`visual_description` is the ONLY channel that tells the video generator what Manim objects to draw.
+Write it as a concrete, visual instruction — NOT a summary of the narration.
+
+[GOOD] "A vertical 9:16 frame. Top: a red Circle that grows from center. Middle: the text '오차항' in bold yellow. Bottom: a small MathTex epsilon fades in."
+[BAD] "Explain the error term concept" (this is narration, not visual)
+
+- Mention specific Manim objects: Circle, Dot, Arrow, Axes, NumberLine, Brace, VGroup, MathTex
+- Mention colors: RED, BLUE, YELLOW, GREEN
+- Mention animation: FadeIn, Write, Create, Transform, GrowFromCenter
+- Keep it under 80 words but be specific.
+
+## visual_params Guidelines (CRITICAL)
+
+`visual_params` provides exact data for the chosen template. If left empty, the system FALLS BACK to copying the narration text into the scene, creating an ugly DUPLICATE (same text as subtitle AND scene).
+
+You MUST fill `visual_params` with keys that DIFFER from the narration text.
+
+### Beat templates — required keys
+- short_hook:    {"headline": "짧은 훅 텍스트 (12-18자, 자막과 다르게)"}
+- short_before:  {"text": "문제 상황 요약 (자막과 다르게, 10-15자)"}
+- short_after:   {"text": "결과 요약 (자막과 다르게, 10-15자)"}
+- short_payoff_card: {"headline": "한 줄 결론 (자막과 다르게, 12-18자)"}
+- short_cta:     {"text": "구독 / 다음 영상 문구"}
+
+### Concept templates — required keys
+- short_concept_equation: {"latex": "수식 LaTeX", "font_size": 48}
+- short_concept_graph:    {"func": "lambda x: x**2", "x_min": -3, "x_max": 3, "color": "BLUE"}
+- short_concept_number_line: {"value": 2.5, "label": "임계값"}
+- short_concept_annotated: {"latex": "수식", "annotation": "한글 설명"}
+- short_concept_compare:   {"left": "틀린 수식", "right": "맞는 수식"}
+- short_concept_pattern:   {"items": ["케이스1", "케이스2", "케이스3"]}
+
+### Domain templates — required keys
+- short_domain_icon: {"label": "라벨", "shape": "circle"}
+- short_stat_chart:  {"values": [10, 20, 30], "labels": ["A", "B", "C"]}
+- short_flow_arrow:  {"steps": ["단계1", "단계2", "단계3"]}
+
+### LLM-only (not in registry)
+- short_visual_scene: {"prompt": "(optional) extra hint for LLM"}
+  → Use this when the scene needs custom animation (moving dots, multiple shapes, transforms).
+  → RECOMMENDED for Concept and Application beats if the description is rich.
+  → Max 2 per unit.
+
+## Avoid Narration Duplication (CRITICAL)
+
+If you leave visual_params empty or set text/headline equal to narration, the viewer sees THE SAME TEXT twice:
+- Once as a burned-in subtitle at the bottom
+- Once as a large text object in the middle of the screen
+
+This looks amateur. Always make the on-screen text SHORTER, BOLDER, and DIFFERENT from the full narration sentence.
+
+Example:
+- narration: "소득이 똑같은 두 집이 있어요. 그런데 식비 지출은 왜 다를까요?"
+- visual_params.headline (for short_hook): "같은 소득, 다른 지출"
+
+## Beat → visual_type Freedom
+
+You are NOT locked to defaults. Pick the type that best serves the content:
+- Hook: short_hook OR short_visual_scene (if dramatic icon/animation fits better)
+- Problem: short_before OR short_concept_compare (if misconception) OR short_domain_icon
+- Concept: short_concept_equation, short_concept_graph, short_concept_annotated, short_concept_pattern, OR short_visual_scene
+- Application: short_after, short_concept_graph, short_flow_arrow, OR short_visual_scene
+- Payoff: short_payoff_card OR short_visual_scene (if celebratory animation fits)
+
 ## Available visual_type catalog (short_* only)
 
 ### Beat templates (5)
@@ -119,7 +185,7 @@ Default visual_type based on story_format (you may override if content requires)
 14) short_flow_arrow - procedure 2-3 step arrows (stakes, curiosity)
 
 ### LLM-only (not in registry)
-15) short_visual_scene - custom 9:16 Manim code generation (use sparingly, max 1 per unit)
+15) short_visual_scene - custom 9:16 Manim code generation
 
 ## Good vs Bad Examples
 

@@ -190,8 +190,8 @@ def build_short_manim_user_prompt(
     return (
         f"duration_seconds (target total time, approximate): {duration_seconds:.3f}\n"
         f"narration (for context only; do not print raw LaTeX as plain Text): {segment.narration}\n"
-        f"visual_description: {segment.visual_description}\n"
-        f"visual_params: {json.dumps(segment.visual_params, ensure_ascii=False)}\n"
+        f"visual_description (PRIMARY instruction — follow this exactly): {segment.visual_description}\n"
+        f"visual_params (exact data): {json.dumps(segment.visual_params, ensure_ascii=False)}\n"
         f"prev_scene_state: {json.dumps([s.model_dump() for s in segment.prev_scene_state] if segment.prev_scene_state else None, ensure_ascii=False)}\n"
         f"{prior}\n"
         "Generate (nothing after the Segment class; no __main__ block):\n"
